@@ -28,7 +28,7 @@ SECRET_KEY=$(openssl rand -hex 32)
 # Create .env file
 cat > .env << EOF
 SECRET_KEY=$SECRET_KEY
-CORS_ORIGINS=https://founder.axiondeep.com
+CORS_ORIGINS=https://founders.axiondeep.com
 EOF
 
 # Start services
@@ -39,6 +39,6 @@ echo "=== Setup Complete ==="
 echo "FounderOS is starting up..."
 echo ""
 echo "Next steps:"
-echo "1. Point founder.axiondeep.com DNS to this server's IP"
+echo "1. Point founders.axiondeep.com DNS to this server's IP"
 echo "2. Run: docker-compose logs -f  (to monitor)"
 echo ""

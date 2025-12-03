@@ -33,7 +33,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="FounderOS API", version="1.0.0")
 
 # CORS - configure from environment
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://founder.axiondeep.com")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://founders.axiondeep.com")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in CORS_ORIGINS.split(",")],

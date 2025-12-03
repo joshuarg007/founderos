@@ -10,7 +10,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./data/founderos.db
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
-      - CORS_ORIGINS=https://founder.axiondeep.com
+      - CORS_ORIGINS=https://founders.axiondeep.com
     volumes:
       - backend-data:/app/data
     networks:
@@ -26,7 +26,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=https://founder.axiondeep.com/api
+        - VITE_API_URL=https://founders.axiondeep.com/api
     container_name: founderos-frontend
     restart: unless-stopped
     networks:

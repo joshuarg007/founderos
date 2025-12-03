@@ -4,7 +4,7 @@
 
 set -e
 
-DOMAIN="founder.axiondeep.com"
+DOMAIN="founders.axiondeep.com"
 EMAIL="admin@axiondeep.com"  # Change to your email
 
 echo "=== FounderOS Deployment Script ==="
