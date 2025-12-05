@@ -26,7 +26,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=https://founders.axiondeep.com/api
+        - VITE_API_URL=https://founders.axiondeep.com
     container_name: founderos-frontend
     restart: unless-stopped
     networks:
