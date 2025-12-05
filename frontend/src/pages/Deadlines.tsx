@@ -10,6 +10,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { getDeadlines, createDeadline, updateDeadline, deleteDeadline, completeDeadline, type Deadline } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { format, isBefore, isAfter, addDays } from 'date-fns';
 
 const deadlineTypes = [
@@ -23,6 +24,7 @@ const deadlineTypes = [
 ];
 
 export default function Deadlines() {
+  const { canEdit } = useAuth();
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState('all');
@@ -123,13 +125,15 @@ export default function Deadlines() {
           <h1 className="text-3xl font-bold text-white">Deadlines</h1>
           <p className="text-gray-400 mt-1">Track important dates and renewals</p>
         </div>
-        <button
-          onClick={() => { setEditingDeadline(null); setFormData({ title: '', description: '', deadline_type: 'other', due_date: '', reminder_days: 7, is_recurring: false, recurrence_months: 12 }); setShowModal(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Add Deadline
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => { setEditingDeadline(null); setFormData({ title: '', description: '', deadline_type: 'other', due_date: '', reminder_days: 7, is_recurring: false, recurrence_months: 12 }); setShowModal(true); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Add Deadline
+          </button>
+        )}
       </div>
 
       {/* Search & Filter */}
@@ -180,12 +184,14 @@ export default function Deadlines() {
       ) : filteredDeadlines.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500">No deadlines found</p>
-          <button
-            onClick={() => setShowModal(true)}
-            className="mt-4 text-cyan-400 hover:text-cyan-300"
-          >
-            Add your first deadline
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="mt-4 text-cyan-400 hover:text-cyan-300"
+            >
+              Add your first deadline
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -206,6 +212,7 @@ export default function Deadlines() {
                     onComplete={handleComplete}
                     getTypeIcon={getTypeIcon}
                     status="overdue"
+                    canEdit={canEdit}
                   />
                 ))}
               </div>
@@ -228,6 +235,7 @@ export default function Deadlines() {
                     onComplete={handleComplete}
                     getTypeIcon={getTypeIcon}
                     status={isSoon(deadline.due_date) ? 'soon' : 'normal'}
+                    canEdit={canEdit}
                   />
                 ))}
               </div>
@@ -250,6 +258,7 @@ export default function Deadlines() {
                     onComplete={handleComplete}
                     getTypeIcon={getTypeIcon}
                     status="completed"
+                    canEdit={canEdit}
                   />
                 ))}
               </div>
@@ -379,7 +388,8 @@ function DeadlineCard({
   onDelete,
   onComplete,
   getTypeIcon,
-  status
+  status,
+  canEdit
 }: {
   deadline: Deadline;
   onEdit: (d: Deadline) => void;
@@ -387,6 +397,7 @@ function DeadlineCard({
   onComplete: (id: number) => void;
   getTypeIcon: (type: string) => string;
   status: 'overdue' | 'soon' | 'normal' | 'completed';
+  canEdit: boolean;
 }) {
   const borderColor = {
     overdue: 'border-red-500/30',
@@ -408,10 +419,15 @@ function DeadlineCard({
         <div className="flex items-center gap-4">
           {!deadline.is_completed && (
             <button
-              onClick={() => onComplete(deadline.id)}
-              className="w-6 h-6 rounded-full border-2 border-gray-600 hover:border-green-500 hover:bg-green-500/20 transition flex items-center justify-center"
+              onClick={() => canEdit && onComplete(deadline.id)}
+              disabled={!canEdit}
+              className={`w-6 h-6 rounded-full border-2 transition flex items-center justify-center ${
+                canEdit
+                  ? 'border-gray-600 hover:border-green-500 hover:bg-green-500/20 cursor-pointer'
+                  : 'border-gray-700 cursor-not-allowed opacity-50'
+              }`}
             >
-              <Check className="w-3 h-3 text-transparent hover:text-green-500" />
+              <Check className={`w-3 h-3 ${canEdit ? 'text-transparent hover:text-green-500' : 'text-transparent'}`} />
             </button>
           )}
           {deadline.is_completed && (
@@ -446,20 +462,22 @@ function DeadlineCard({
             </div>
             <div className="text-xs text-gray-500 capitalize">{deadline.deadline_type}</div>
           </div>
-          <div className="flex gap-1">
-            <button
-              onClick={() => onEdit(deadline)}
-              className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => onDelete(deadline.id)}
-              className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/10 transition"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
+          {canEdit && (
+            <div className="flex gap-1">
+              <button
+                onClick={() => onEdit(deadline)}
+                className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onDelete(deadline.id)}
+                className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/10 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

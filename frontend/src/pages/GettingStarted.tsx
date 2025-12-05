@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
   CheckCircle2,
   Circle,
@@ -521,6 +522,7 @@ const categories = [
 
 export default function GettingStarted() {
   const navigate = useNavigate();
+  const { canEdit } = useAuth();
   const [progress, setProgress] = useState<Record<string, ChecklistProgress>>({});
   const [loading, setLoading] = useState(true);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -842,8 +844,8 @@ export default function GettingStarted() {
                       >
                         {/* Item Header - whole section clickable */}
                         <div
-                          onClick={() => handleItemClick(item)}
-                          className="p-4 flex items-start gap-3 cursor-pointer hover:bg-white/5 transition"
+                          onClick={() => canEdit && handleItemClick(item)}
+                          className={`p-4 flex items-start gap-3 transition ${canEdit ? 'cursor-pointer hover:bg-white/5' : 'cursor-default'}`}
                         >
                           <div className="mt-0.5 shrink-0">
                             {isComplete ? (
@@ -1175,7 +1177,8 @@ export default function GettingStarted() {
                 />
               </div>
 
-              {/* Upload Document Section */}
+              {/* Upload Document Section - Only for users with edit permission */}
+              {canEdit && (
               <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Upload className="w-4 h-4 text-cyan-400" />
@@ -1240,6 +1243,7 @@ export default function GettingStarted() {
                   )}
                 </div>
               </div>
+              )}
             </div>
 
             {/* Modal Actions */}

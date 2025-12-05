@@ -11,6 +11,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { getDocuments, createDocument, updateDocument, deleteDocument, type Document } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { format, isBefore, addDays } from 'date-fns';
 
 const API_BASE = 'http://localhost:8000/api';
@@ -28,6 +29,7 @@ const categories = [
 ];
 
 export default function Documents() {
+  const { canEdit } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -198,54 +200,58 @@ export default function Documents() {
           <h1 className="text-3xl font-bold text-white">Documents</h1>
           <p className="text-gray-400 mt-1">Store and organize your business documents</p>
         </div>
-        <button
-          onClick={() => { setEditingDocument(null); setModalFile(null); setFormData({ name: '', category: 'other', external_url: '', description: '', expiration_date: '', tags: '' }); setShowModal(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Add Document
-        </button>
-      </div>
-
-      {/* Upload Zone */}
-      <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-          isDragging
-            ? 'border-cyan-500 bg-cyan-500/10'
-            : 'border-white/20 hover:border-white/40 hover:bg-white/5'
-        }`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          onChange={handleFileSelect}
-          className="hidden"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt,.csv"
-        />
-        {uploading ? (
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
-            <p className="text-gray-400">Uploading...</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-3">
-            <CloudUpload className={`w-10 h-10 ${isDragging ? 'text-cyan-400' : 'text-gray-500'}`} />
-            <div>
-              <p className="text-white font-medium">
-                {isDragging ? 'Drop files here' : 'Drag & drop files or click to browse'}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                PDF, DOC, XLS, images, and more
-              </p>
-            </div>
-          </div>
+        {canEdit && (
+          <button
+            onClick={() => { setEditingDocument(null); setModalFile(null); setFormData({ name: '', category: 'other', external_url: '', description: '', expiration_date: '', tags: '' }); setShowModal(true); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Add Document
+          </button>
         )}
       </div>
+
+      {/* Upload Zone - only show for users who can edit */}
+      {canEdit && (
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+            isDragging
+              ? 'border-cyan-500 bg-cyan-500/10'
+              : 'border-white/20 hover:border-white/40 hover:bg-white/5'
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt,.csv"
+          />
+          {uploading ? (
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
+              <p className="text-gray-400">Uploading...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3">
+              <CloudUpload className={`w-10 h-10 ${isDragging ? 'text-cyan-400' : 'text-gray-500'}`} />
+              <div>
+                <p className="text-white font-medium">
+                  {isDragging ? 'Drop files here' : 'Drag & drop files or click to browse'}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  PDF, DOC, XLS, images, and more
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Search & Filter */}
       <div className="flex flex-col md:flex-row gap-4">
@@ -283,12 +289,14 @@ export default function Documents() {
       ) : filteredDocuments.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500">No documents found</p>
-          <button
-            onClick={() => setShowModal(true)}
-            className="mt-4 text-cyan-400 hover:text-cyan-300"
-          >
-            Add your first document
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="mt-4 text-cyan-400 hover:text-cyan-300"
+            >
+              Add your first document
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -334,20 +342,23 @@ export default function Documents() {
               )}
 
               <div className="flex items-center justify-between pt-3 border-t border-white/10">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(doc)}
-                    className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(doc.id)}
-                    className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/10 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {canEdit && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(doc)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(doc.id)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/10 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+                {!canEdit && <div />}
                 {(doc.external_url || doc.file_path) && (
                   <a
                     href={doc.external_url || doc.file_path || '#'}

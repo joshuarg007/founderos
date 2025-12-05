@@ -12,6 +12,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isViewer: boolean;
+  canEdit: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -98,12 +100,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   };
 
+  const isViewer = user?.role === 'viewer';
+  const canEdit = !!user && user.role !== 'viewer';
+
   return (
     <AuthContext.Provider
       value={{
         user,
         isLoading,
         isAuthenticated: !!user,
+        isViewer,
+        canEdit,
         login,
         register,
         logout,
