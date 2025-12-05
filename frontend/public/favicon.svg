@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="rocketGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="#0f1117"/>
+  <g transform="translate(25, 20) scale(0.5)">
+    <path fill="url(#rocketGrad)" d="M50 10c-15 15-25 40-25 60 0 5 2 10 5 15l20-10 20 10c3-5 5-10 5-15 0-20-10-45-25-60z"/>
+    <ellipse cx="50" cy="75" rx="8" ry="12" fill="#f97316"/>
+    <ellipse cx="50" cy="78" rx="5" ry="8" fill="#fbbf24"/>
+    <circle cx="50" cy="45" r="8" fill="#0f1117"/>
+    <circle cx="50" cy="45" r="5" fill="#22d3ee"/>
+    <path fill="url(#rocketGrad)" d="M25 70c-10 5-15 15-15 25l15-10z"/>
+    <path fill="url(#rocketGrad)" d="M75 70c10 5 15 15 15 25l-15-10z"/>
+  </g>
+</svg>
