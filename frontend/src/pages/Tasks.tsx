@@ -238,6 +238,19 @@ export default function Tasks() {
     }
   };
 
+  const handleStatusChange = async (taskId: number, newStatus: string) => {
+    try {
+      await updateTask(taskId, { status: newStatus });
+      loadTasks();
+      if (selectedTask?.id === taskId) {
+        const updated = await getTasks({ board_id: currentBoard!.id, include_completed: true });
+        setSelectedTask(updated.find(t => t.id === taskId) || null);
+      }
+    } catch (error) {
+      console.error('Failed to update task status:', error);
+    }
+  };
+
   const resetTaskForm = () => {
     setTaskForm({
       title: '',
@@ -387,7 +400,7 @@ export default function Tasks() {
         </div>
       </DragDropContext>
 
-      {/* Task Detail Panel */}
+      {/* Task Detail Modal */}
       {selectedTask && (
         <TaskDetailPanel
           task={selectedTask}
@@ -397,6 +410,7 @@ export default function Tasks() {
           onReopen={handleReopenTask}
           onDelete={handleDeleteTask}
           onAssign={handleAssignTask}
+          onStatusChange={handleStatusChange}
           onEdit={openEditModal}
           canEdit={canEdit}
           isAdmin={isAdmin}
@@ -679,7 +693,7 @@ function TaskCard({
   );
 }
 
-// Task Detail Panel Component
+// Task Detail Modal Component
 function TaskDetailPanel({
   task,
   users,
@@ -688,6 +702,7 @@ function TaskDetailPanel({
   onReopen,
   onDelete,
   onAssign,
+  onStatusChange,
   onEdit,
   canEdit,
   isAdmin,
@@ -699,6 +714,7 @@ function TaskDetailPanel({
   onReopen: (id: number) => void;
   onDelete: (id: number) => void;
   onAssign: (taskId: number, userId: number | null) => void;
+  onStatusChange: (taskId: number, status: string) => void;
   onEdit: (task: Task) => void;
   canEdit: boolean;
   isAdmin: boolean;
@@ -785,48 +801,75 @@ function TaskDetailPanel({
 
   const totalTime = timeEntries.reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
 
-  return (
-    <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-[#1a1d24] border-l border-white/10 shadow-xl z-50 flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-white/10 flex items-start justify-between">
-        <div className="flex-1 min-w-0 pr-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`px-2 py-0.5 text-xs rounded border ${PRIORITY_COLORS[task.priority]}`}>
-              {task.priority}
-            </span>
-            {task.status === 'done' && (
-              <span className="px-2 py-0.5 text-xs rounded bg-green-500/20 text-green-300 border border-green-500/30">
-                Completed
-              </span>
-            )}
-          </div>
-          <h2 className="text-lg font-semibold text-white">{task.title}</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          {canEdit && (
-            <button
-              onClick={() => onEdit(task)}
-              className="p-2 text-gray-400 hover:text-white transition"
-            >
-              <Edit3 className="w-4 h-4" />
-            </button>
-          )}
-          {canEdit && (
-            <button
-              onClick={() => onDelete(task.id)}
-              className="p-2 text-gray-400 hover:text-red-400 transition"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-white transition">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
+  const STATUS_OPTIONS = [
+    { value: 'backlog', label: 'Backlog', color: 'bg-gray-500/20 text-gray-300 border-gray-500/30' },
+    { value: 'todo', label: 'To Do', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+    { value: 'in_progress', label: 'In Progress', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' },
+    { value: 'done', label: 'Done', color: 'bg-green-500/20 text-green-300 border-green-500/30' },
+  ];
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-[#1a1d24] rounded-xl border border-white/10 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="p-5 border-b border-white/10 flex items-start justify-between">
+          <div className="flex-1 min-w-0 pr-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`px-2 py-0.5 text-xs rounded border ${PRIORITY_COLORS[task.priority]}`}>
+                {task.priority}
+              </span>
+            </div>
+            <h2 className="text-xl font-semibold text-white">{task.title}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {canEdit && (
+              <button
+                onClick={() => onEdit(task)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => onDelete(task.id)}
+                className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Status Selector */}
+        <div className="px-5 py-3 border-b border-white/10 bg-white/5">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400 mr-2">Status:</span>
+            {STATUS_OPTIONS.map((status) => (
+              <button
+                key={status.value}
+                onClick={() => onStatusChange(task.id, status.value)}
+                disabled={!canEdit && status.value !== 'done'}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition ${
+                  task.status === status.value
+                    ? status.color + ' ring-2 ring-offset-2 ring-offset-[#1a1d24]'
+                    : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10 hover:text-white'
+                } ${!canEdit && status.value !== 'done' ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {status.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-6">
         {/* Description */}
         {task.description && (
           <div>
@@ -1087,26 +1130,33 @@ function TaskDetailPanel({
         )}
       </div>
 
-      {/* Fixed Footer with Complete Button */}
-      <div className="p-4 border-t border-white/10 bg-[#1a1d24]">
-        <div className="flex justify-end">
-          {task.status !== 'done' ? (
+        {/* Footer */}
+        <div className="p-4 border-t border-white/10 bg-[#1a1d24] rounded-b-xl">
+          <div className="flex justify-between items-center">
             <button
-              onClick={() => onComplete(task.id)}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 transition shadow-lg"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition"
             >
-              <CheckCircle2 className="w-5 h-5" />
-              Complete Task
+              Close
             </button>
-          ) : canEdit ? (
-            <button
-              onClick={() => onReopen(task.id)}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 transition"
-            >
-              <Circle className="w-5 h-5" />
-              Reopen Task
-            </button>
-          ) : null}
+            {task.status !== 'done' ? (
+              <button
+                onClick={() => onComplete(task.id)}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 transition shadow-lg"
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                Complete Task
+              </button>
+            ) : canEdit ? (
+              <button
+                onClick={() => onReopen(task.id)}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 transition"
+              >
+                <Circle className="w-5 h-5" />
+                Reopen Task
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
