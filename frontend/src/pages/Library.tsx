@@ -15,7 +15,7 @@ import {
   Hash
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api`;
 
 interface BusinessInfo {
   id: number;
@@ -90,9 +90,9 @@ export default function Library() {
   const fetchData = async () => {
     try {
       const [infoRes, identifiersRes, docsRes] = await Promise.all([
-        fetch(`${API_BASE}/business-info`),
-        fetch(`${API_BASE}/business-identifiers`),
-        fetch(`${API_BASE}/documents?category=formation`)
+        fetch(`${API_BASE}/business-info`, { credentials: 'include' }),
+        fetch(`${API_BASE}/business-identifiers`, { credentials: 'include' }),
+        fetch(`${API_BASE}/documents?category=formation`, { credentials: 'include' })
       ]);
 
       if (infoRes.ok) {
@@ -127,6 +127,7 @@ export default function Library() {
       const res = await fetch(`${API_BASE}/business-info`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload)
       });
       if (res.ok) {
@@ -149,7 +150,7 @@ export default function Library() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/business-identifiers/${id}/value`);
+      const res = await fetch(`${API_BASE}/business-identifiers/${id}/value`, { credentials: 'include' });
       if (res.ok) {
         const { value } = await res.json();
         setRevealedValues(prev => ({ ...prev, [id]: value }));
@@ -164,7 +165,7 @@ export default function Library() {
     try {
       let value = revealedValues[id];
       if (!value) {
-        const res = await fetch(`${API_BASE}/business-identifiers/${id}/value`);
+        const res = await fetch(`${API_BASE}/business-identifiers/${id}/value`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           value = data.value;
@@ -185,6 +186,7 @@ export default function Library() {
       const res = await fetch(`${API_BASE}/business-identifiers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(newIdentifier)
       });
       if (res.ok) {
@@ -207,7 +209,8 @@ export default function Library() {
     if (!confirm('Are you sure you want to delete this identifier?')) return;
     try {
       const res = await fetch(`${API_BASE}/business-identifiers/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
       if (res.ok) {
         fetchData();
