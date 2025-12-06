@@ -16,12 +16,14 @@ import {
   Wrench,
   Bookmark,
   UserCog,
+  CheckSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const navItems = [
   { to: '/', icon: Sparkles, label: 'Daily Brief' },
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/getting-started', icon: ClipboardCheck, label: 'Getting Started' },
   { to: '/library', icon: Building2, label: 'Business Library' },
   { to: '/website', icon: Globe, label: 'Web Presence' },

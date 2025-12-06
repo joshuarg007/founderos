@@ -174,7 +174,7 @@ export const getBusinessInfo = () => fetchApi<BusinessInfo>('/business-info');
 // Daily Brief
 export interface DailyBriefItem {
   id: number;
-  type: 'deadline' | 'document' | 'contact';
+  type: 'deadline' | 'document' | 'contact' | 'task';
   title: string;
   description?: string | null;
   deadline_type?: string;
@@ -191,6 +191,10 @@ export interface DailyBriefItem {
   last_contacted?: string;
   days_since_contact?: number;
   responsibilities?: string;
+  // Task-specific fields
+  status?: string;
+  priority?: string;
+  assigned_to?: string;
 }
 
 export interface DailyBrief {
@@ -220,6 +224,9 @@ export const recordContactTouch = (id: number) =>
     method: 'PATCH',
     body: JSON.stringify({ last_contacted: new Date().toISOString() })
   });
+
+export const completeTaskFromBrief = (id: number) =>
+  fetchApi<Task>(`/tasks/${id}/complete`, { method: 'POST' });
 
 // Vault
 export interface VaultStatus {
@@ -433,3 +440,239 @@ export const updateUser = (id: number, data: UserUpdate) =>
 
 export const deleteUser = (id: number) =>
   fetchApi<{ ok: boolean }>(`/auth/users/${id}`, { method: 'DELETE' });
+
+// ============ Task Management ============
+
+// User brief for task responses
+export interface UserBrief {
+  id: number;
+  email: string;
+  name: string | null;
+}
+
+// Task Board
+export interface TaskColumn {
+  id: number;
+  board_id: number;
+  name: string;
+  status: string;
+  position: number;
+  color: string | null;
+  wip_limit: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskBoard {
+  id: number;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  is_default: boolean;
+  created_by_id: number;
+  columns: TaskColumn[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Task {
+  id: number;
+  title: string;
+  description: string | null;
+  board_id: number;
+  column_id: number | null;
+  status: string;
+  priority: string;
+  position: number;
+  due_date: string | null;
+  reminder_days: number;
+  start_date: string | null;
+  estimated_minutes: number | null;
+  completed_at: string | null;
+  created_by_id: number;
+  assigned_to_id: number | null;
+  created_by: UserBrief | null;
+  assigned_to: UserBrief | null;
+  related_deadline_id: number | null;
+  related_contact_id: number | null;
+  tags: string | null;
+  icon: string | null;
+  total_time_minutes: number | null;
+  comment_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskComment {
+  id: number;
+  task_id: number;
+  user_id: number;
+  user: UserBrief | null;
+  content: string;
+  is_edited: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TimeEntry {
+  id: number;
+  task_id: number;
+  user_id: number;
+  user: UserBrief | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_minutes: number | null;
+  description: string | null;
+  is_running: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskActivity {
+  id: number;
+  task_id: number;
+  user_id: number;
+  user: UserBrief | null;
+  activity_type: string;
+  description: string;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+}
+
+// Board API
+export const getBoards = () => fetchApi<TaskBoard[]>('/boards');
+
+export const getBoard = (id: number) => fetchApi<TaskBoard>(`/boards/${id}`);
+
+export const createBoard = (data: { name: string; description?: string; icon?: string }) =>
+  fetchApi<TaskBoard>('/boards', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateBoard = (id: number, data: Partial<TaskBoard>) =>
+  fetchApi<TaskBoard>(`/boards/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteBoard = (id: number) =>
+  fetchApi<{ ok: boolean }>(`/boards/${id}`, { method: 'DELETE' });
+
+// Column API
+export const createColumn = (data: { board_id: number; name: string; status?: string; color?: string; position?: number }) =>
+  fetchApi<TaskColumn>('/columns', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateColumn = (id: number, data: Partial<TaskColumn>) =>
+  fetchApi<TaskColumn>(`/columns/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteColumn = (id: number) =>
+  fetchApi<{ ok: boolean }>(`/columns/${id}`, { method: 'DELETE' });
+
+export const reorderColumns = (columns: { id: number; position: number }[]) =>
+  fetchApi<{ ok: boolean }>('/columns/reorder', { method: 'POST', body: JSON.stringify(columns) });
+
+// Task API
+export const getTasks = (params?: {
+  board_id?: number;
+  column_id?: number;
+  status?: string;
+  assigned_to_id?: number;
+  include_completed?: boolean;
+}) => {
+  const searchParams = new URLSearchParams();
+  if (params?.board_id) searchParams.append('board_id', String(params.board_id));
+  if (params?.column_id) searchParams.append('column_id', String(params.column_id));
+  if (params?.status) searchParams.append('status', params.status);
+  if (params?.assigned_to_id) searchParams.append('assigned_to_id', String(params.assigned_to_id));
+  if (params?.include_completed) searchParams.append('include_completed', 'true');
+  const query = searchParams.toString();
+  return fetchApi<Task[]>(`/tasks${query ? `?${query}` : ''}`);
+};
+
+export const getTask = (id: number) => fetchApi<Task>(`/tasks/${id}`);
+
+export const createTask = (data: {
+  board_id: number;
+  title: string;
+  description?: string;
+  column_id?: number;
+  status?: string;
+  priority?: string;
+  due_date?: string;
+  assigned_to_id?: number;
+  related_deadline_id?: number;
+  related_contact_id?: number;
+  tags?: string;
+}) => fetchApi<Task>('/tasks', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateTask = (id: number, data: Partial<Task>) =>
+  fetchApi<Task>(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteTask = (id: number) =>
+  fetchApi<{ ok: boolean }>(`/tasks/${id}`, { method: 'DELETE' });
+
+export const assignTask = (id: number, assigned_to_id: number | null) =>
+  fetchApi<Task>(`/tasks/${id}/assign`, {
+    method: 'PATCH',
+    body: JSON.stringify({ assigned_to_id })
+  });
+
+export const completeTask = (id: number) =>
+  fetchApi<Task>(`/tasks/${id}/complete`, { method: 'POST' });
+
+export const reopenTask = (id: number) =>
+  fetchApi<Task>(`/tasks/${id}/reopen`, { method: 'POST' });
+
+export const moveTask = (task_id: number, target_column_id: number, target_position: number) =>
+  fetchApi<Task>('/tasks/move', {
+    method: 'POST',
+    body: JSON.stringify({ task_id, target_column_id, target_position })
+  });
+
+// Comments API
+export const getTaskComments = (taskId: number) =>
+  fetchApi<TaskComment[]>(`/tasks/${taskId}/comments`);
+
+export const createComment = (task_id: number, content: string) =>
+  fetchApi<TaskComment>('/comments', {
+    method: 'POST',
+    body: JSON.stringify({ task_id, content })
+  });
+
+export const updateComment = (id: number, content: string) =>
+  fetchApi<TaskComment>(`/comments/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ content })
+  });
+
+export const deleteComment = (id: number) =>
+  fetchApi<{ ok: boolean }>(`/comments/${id}`, { method: 'DELETE' });
+
+// Time Tracking API
+export const getTimeEntries = (taskId: number) =>
+  fetchApi<TimeEntry[]>(`/tasks/${taskId}/time-entries`);
+
+export const createTimeEntry = (task_id: number, duration_minutes: number, description?: string) =>
+  fetchApi<TimeEntry>('/time-entries', {
+    method: 'POST',
+    body: JSON.stringify({ task_id, duration_minutes, description })
+  });
+
+export const startTimer = (task_id: number, description?: string) =>
+  fetchApi<TimeEntry>('/time-entries/start', {
+    method: 'POST',
+    body: JSON.stringify({ task_id, description })
+  });
+
+export const stopTimer = (entry_id: number) =>
+  fetchApi<TimeEntry>(`/time-entries/${entry_id}/stop`, { method: 'POST' });
+
+export const getRunningTimer = () =>
+  fetchApi<TimeEntry>('/time-entries/running');
+
+export const deleteTimeEntry = (id: number) =>
+  fetchApi<{ ok: boolean }>(`/time-entries/${id}`, { method: 'DELETE' });
+
+// Activity API
+export const getTaskActivity = (taskId: number, limit?: number) =>
+  fetchApi<TaskActivity[]>(`/tasks/${taskId}/activity${limit ? `?limit=${limit}` : ''}`);
+
+// Users list for task assignment
+export const getUsersList = () =>
+  fetchApi<UserBrief[]>('/users-list');

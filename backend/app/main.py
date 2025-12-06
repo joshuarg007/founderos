@@ -8,8 +8,12 @@ import os
 import shutil
 
 from .database import engine, get_db, Base
-from .models import Service, Document, Contact, Deadline, BusinessInfo, BusinessIdentifier, ChecklistProgress, User, VaultConfig, Credential, ProductOffered, ProductUsed, WebLink
-from .auth import router as auth_router
+from .models import (
+    Service, Document, Contact, Deadline, BusinessInfo, BusinessIdentifier,
+    ChecklistProgress, User, VaultConfig, Credential, ProductOffered, ProductUsed, WebLink,
+    TaskBoard, TaskColumn, Task, TaskComment, TimeEntry, TaskActivity
+)
+from .auth import router as auth_router, get_current_user
 from .schemas import (
     ServiceCreate, ServiceUpdate, ServiceResponse,
     DocumentCreate, DocumentUpdate, DocumentResponse,
@@ -23,7 +27,13 @@ from .schemas import (
     CredentialCreate, CredentialUpdate, CredentialMasked, CredentialDecrypted,
     ProductOfferedCreate, ProductOfferedUpdate, ProductOfferedResponse,
     ProductUsedCreate, ProductUsedUpdate, ProductUsedResponse,
-    WebLinkCreate, WebLinkUpdate, WebLinkResponse
+    WebLinkCreate, WebLinkUpdate, WebLinkResponse,
+    TaskBoardCreate, TaskBoardUpdate, TaskBoardResponse,
+    TaskColumnCreate, TaskColumnUpdate, TaskColumnResponse, ColumnReorder,
+    TaskCreate, TaskUpdate, TaskResponse, TaskAssign, TaskMove,
+    TaskCommentCreate, TaskCommentUpdate, TaskCommentResponse,
+    TimeEntryCreate, TimeEntryUpdate, TimeEntryResponse, TimerStart,
+    TaskActivityResponse, UserBrief
 )
 from .vault import (
     generate_salt, derive_key, hash_master_password, verify_master_password,
@@ -424,6 +434,34 @@ def get_daily_brief(db: Session = Depends(get_db)):
         (Contact.last_contacted == None) | (Contact.last_contacted < ninety_days_ago)
     ).order_by(Contact.last_contacted.nullsfirst()).limit(5).all()
 
+    # TASKS - Get tasks with due dates
+    overdue_tasks = db.query(Task).filter(
+        Task.status != "done",
+        Task.due_date != None,
+        Task.due_date < today_start
+    ).order_by(Task.due_date).all()
+
+    today_tasks = db.query(Task).filter(
+        Task.status != "done",
+        Task.due_date != None,
+        Task.due_date >= today_start,
+        Task.due_date < today_end
+    ).order_by(Task.due_date).all()
+
+    week_tasks = db.query(Task).filter(
+        Task.status != "done",
+        Task.due_date != None,
+        Task.due_date >= today_end,
+        Task.due_date < week_end
+    ).order_by(Task.due_date).all()
+
+    upcoming_tasks = db.query(Task).filter(
+        Task.status != "done",
+        Task.due_date != None,
+        Task.due_date >= week_end,
+        Task.due_date < month_end
+    ).order_by(Task.due_date).all()
+
     # Format response
     def format_deadline(d):
         days_until = (d.due_date.date() - now.date()).days
@@ -466,11 +504,28 @@ def get_daily_brief(db: Session = Depends(get_db)):
             "responsibilities": c.responsibilities,
         }
 
+    def format_task(t):
+        days_until = (t.due_date.date() - now.date()).days if t.due_date else None
+        assigned_to_name = None
+        if t.assigned_to:
+            assigned_to_name = t.assigned_to.email.split('@')[0]  # Use email prefix as display name
+        return {
+            "id": t.id,
+            "type": "task",
+            "title": t.title,
+            "description": t.description,
+            "status": t.status,
+            "priority": t.priority,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "days_until": days_until,
+            "assigned_to": assigned_to_name,
+        }
+
     # Build the brief
-    overdue = [format_deadline(d) for d in overdue_deadlines] + [format_document(d) for d in expired_documents]
-    today = [format_deadline(d) for d in today_deadlines]
-    this_week = [format_deadline(d) for d in week_deadlines] + [format_document(d) for d in expiring_this_week]
-    heads_up = [format_deadline(d) for d in upcoming_deadlines] + [format_document(d) for d in expiring_soon]
+    overdue = [format_deadline(d) for d in overdue_deadlines] + [format_document(d) for d in expired_documents] + [format_task(t) for t in overdue_tasks]
+    today = [format_deadline(d) for d in today_deadlines] + [format_task(t) for t in today_tasks]
+    this_week = [format_deadline(d) for d in week_deadlines] + [format_document(d) for d in expiring_this_week] + [format_task(t) for t in week_tasks]
+    heads_up = [format_deadline(d) for d in upcoming_deadlines] + [format_document(d) for d in expiring_soon] + [format_task(t) for t in upcoming_tasks]
     contacts_attention = [format_contact(c) for c in stale_contacts]
 
     return {
@@ -1104,3 +1159,761 @@ def record_web_link_visit(link_id: int, db: Session = Depends(get_db)):
     link.last_visited = datetime.utcnow()
     db.commit()
     return {"ok": True}
+
+
+# ============ Task Management - Auth Helpers ============
+
+def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    """Require admin role for certain operations."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+
+def get_editor_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Require editor or admin role."""
+    if current_user.role not in ["admin", "editor"]:
+        raise HTTPException(status_code=403, detail="Editor access required")
+    return current_user
+
+
+# ============ Task Boards ============
+
+@app.get("/api/boards", response_model=List[TaskBoardResponse])
+def get_boards(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all boards."""
+    boards = db.query(TaskBoard).order_by(TaskBoard.is_default.desc(), TaskBoard.name).all()
+
+    # If no boards exist, create a default one
+    if not boards:
+        default_board = TaskBoard(
+            name="Main Board",
+            description="Default task board",
+            is_default=True,
+            created_by_id=current_user.id
+        )
+        db.add(default_board)
+        db.commit()
+        db.refresh(default_board)
+
+        # Create default columns
+        default_columns = [
+            ("Backlog", "backlog", 0, "#6b7280"),
+            ("To Do", "todo", 1, "#3b82f6"),
+            ("In Progress", "in_progress", 2, "#f59e0b"),
+            ("Done", "done", 3, "#10b981"),
+        ]
+        for name, status, pos, color in default_columns:
+            col = TaskColumn(board_id=default_board.id, name=name, status=status, position=pos, color=color)
+            db.add(col)
+        db.commit()
+        db.refresh(default_board)
+        boards = [default_board]
+
+    return boards
+
+
+@app.post("/api/boards", response_model=TaskBoardResponse)
+def create_board(
+    board: TaskBoardCreate,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Create a new board (editor/admin only)."""
+    db_board = TaskBoard(**board.model_dump(), created_by_id=current_user.id)
+    db.add(db_board)
+    db.commit()
+    db.refresh(db_board)
+
+    # Create default columns
+    default_columns = [
+        ("Backlog", "backlog", 0, "#6b7280"),
+        ("To Do", "todo", 1, "#3b82f6"),
+        ("In Progress", "in_progress", 2, "#f59e0b"),
+        ("Done", "done", 3, "#10b981"),
+    ]
+    for name, status, pos, color in default_columns:
+        col = TaskColumn(board_id=db_board.id, name=name, status=status, position=pos, color=color)
+        db.add(col)
+    db.commit()
+    db.refresh(db_board)
+    return db_board
+
+
+@app.get("/api/boards/{board_id}", response_model=TaskBoardResponse)
+def get_board(board_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    board = db.query(TaskBoard).filter(TaskBoard.id == board_id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    return board
+
+
+@app.patch("/api/boards/{board_id}", response_model=TaskBoardResponse)
+def update_board(
+    board_id: int,
+    board: TaskBoardUpdate,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    db_board = db.query(TaskBoard).filter(TaskBoard.id == board_id).first()
+    if not db_board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    for key, value in board.model_dump(exclude_unset=True).items():
+        setattr(db_board, key, value)
+    db.commit()
+    db.refresh(db_board)
+    return db_board
+
+
+@app.delete("/api/boards/{board_id}")
+def delete_board(
+    board_id: int,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Delete board (admin only)."""
+    board = db.query(TaskBoard).filter(TaskBoard.id == board_id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    db.delete(board)
+    db.commit()
+    return {"ok": True}
+
+
+# ============ Task Columns ============
+
+@app.post("/api/columns", response_model=TaskColumnResponse)
+def create_column(
+    column: TaskColumnCreate,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    # Get max position for this board
+    max_pos = db.query(TaskColumn).filter(TaskColumn.board_id == column.board_id).count()
+    db_column = TaskColumn(**column.model_dump())
+    if column.position is None:
+        db_column.position = max_pos
+    db.add(db_column)
+    db.commit()
+    db.refresh(db_column)
+    return db_column
+
+
+@app.patch("/api/columns/{column_id}", response_model=TaskColumnResponse)
+def update_column(
+    column_id: int,
+    column: TaskColumnUpdate,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    db_column = db.query(TaskColumn).filter(TaskColumn.id == column_id).first()
+    if not db_column:
+        raise HTTPException(status_code=404, detail="Column not found")
+    for key, value in column.model_dump(exclude_unset=True).items():
+        setattr(db_column, key, value)
+    db.commit()
+    db.refresh(db_column)
+    return db_column
+
+
+@app.delete("/api/columns/{column_id}")
+def delete_column(
+    column_id: int,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    column = db.query(TaskColumn).filter(TaskColumn.id == column_id).first()
+    if not column:
+        raise HTTPException(status_code=404, detail="Column not found")
+    # Move tasks to null column
+    db.query(Task).filter(Task.column_id == column_id).update({Task.column_id: None})
+    db.delete(column)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/columns/reorder")
+def reorder_columns(
+    reorder: List[ColumnReorder],
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Reorder columns within a board."""
+    for item in reorder:
+        db.query(TaskColumn).filter(TaskColumn.id == item.id).update({"position": item.position})
+    db.commit()
+    return {"ok": True}
+
+
+# ============ Tasks ============
+
+@app.get("/api/tasks", response_model=List[TaskResponse])
+def get_tasks(
+    board_id: int = None,
+    column_id: int = None,
+    status: str = None,
+    assigned_to_id: int = None,
+    include_completed: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get tasks with filters."""
+    query = db.query(Task)
+    if board_id:
+        query = query.filter(Task.board_id == board_id)
+    if column_id:
+        query = query.filter(Task.column_id == column_id)
+    if status:
+        query = query.filter(Task.status == status)
+    if assigned_to_id:
+        query = query.filter(Task.assigned_to_id == assigned_to_id)
+    if not include_completed:
+        query = query.filter(Task.status != "done")
+
+    tasks = query.order_by(Task.position, Task.created_at.desc()).all()
+
+    # Add computed fields
+    result = []
+    for task in tasks:
+        task_dict = TaskResponse.model_validate(task).model_dump()
+        # Calculate total time
+        total_time = db.query(TimeEntry).filter(
+            TimeEntry.task_id == task.id,
+            TimeEntry.duration_minutes != None
+        ).with_entities(db.query(TimeEntry.duration_minutes).filter(TimeEntry.task_id == task.id)).all()
+        task_dict["total_time_minutes"] = sum([t.duration_minutes or 0 for t in task.time_entries])
+        task_dict["comment_count"] = len(task.comments)
+        result.append(task_dict)
+
+    return result
+
+
+@app.post("/api/tasks", response_model=TaskResponse)
+def create_task(
+    task: TaskCreate,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Create a task. Only admin can set assigned_to_id."""
+    task_data = task.model_dump()
+
+    # Only admin can assign tasks
+    if task_data.get("assigned_to_id") and current_user.role != "admin":
+        task_data["assigned_to_id"] = None
+
+    # Set position to end of column
+    if task_data.get("column_id"):
+        max_pos = db.query(Task).filter(Task.column_id == task_data["column_id"]).count()
+        task_data["position"] = max_pos
+
+    db_task = Task(**task_data, created_by_id=current_user.id)
+    db.add(db_task)
+    db.commit()
+
+    # Log activity
+    activity = TaskActivity(
+        task_id=db_task.id,
+        user_id=current_user.id,
+        activity_type="created",
+        description=f"Created task: {db_task.title}"
+    )
+    db.add(activity)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+@app.get("/api/tasks/{task_id}", response_model=TaskResponse)
+def get_task(task_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task_dict = TaskResponse.model_validate(task).model_dump()
+    task_dict["total_time_minutes"] = sum([t.duration_minutes or 0 for t in task.time_entries])
+    task_dict["comment_count"] = len(task.comments)
+    return task_dict
+
+
+@app.patch("/api/tasks/{task_id}", response_model=TaskResponse)
+def update_task(
+    task_id: int,
+    task: TaskUpdate,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Update task (editor/admin only)."""
+    db_task = db.query(Task).filter(Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    update_data = task.model_dump(exclude_unset=True)
+
+    # Track status changes
+    if "status" in update_data and update_data["status"] != db_task.status:
+        old_status = db_task.status
+        activity = TaskActivity(
+            task_id=task_id,
+            user_id=current_user.id,
+            activity_type="status_changed",
+            description=f"Changed status from {old_status} to {update_data['status']}",
+            old_value=old_status,
+            new_value=update_data["status"]
+        )
+        db.add(activity)
+
+        # Set completed_at if status is done
+        if update_data["status"] == "done" and not db_task.completed_at:
+            update_data["completed_at"] = datetime.utcnow()
+        elif update_data["status"] != "done":
+            update_data["completed_at"] = None
+
+    for key, value in update_data.items():
+        setattr(db_task, key, value)
+
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+@app.delete("/api/tasks/{task_id}")
+def delete_task(
+    task_id: int,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(task)
+    db.commit()
+    return {"ok": True}
+
+
+# ============ Task Assignment (Admin Only) ============
+
+@app.patch("/api/tasks/{task_id}/assign", response_model=TaskResponse)
+def assign_task(
+    task_id: int,
+    assignment: TaskAssign,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Assign task to user (admin only)."""
+    db_task = db.query(Task).filter(Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    old_assignee = db_task.assigned_to_id
+    db_task.assigned_to_id = assignment.assigned_to_id
+
+    # Get assignee name for activity log
+    assignee_name = None
+    if assignment.assigned_to_id:
+        assignee = db.query(User).filter(User.id == assignment.assigned_to_id).first()
+        assignee_name = assignee.name or assignee.email if assignee else None
+
+    activity = TaskActivity(
+        task_id=task_id,
+        user_id=current_user.id,
+        activity_type="assigned",
+        description=f"Assigned task to {assignee_name}" if assignee_name else "Unassigned task",
+        old_value=str(old_assignee) if old_assignee else None,
+        new_value=str(assignment.assigned_to_id) if assignment.assigned_to_id else None
+    )
+    db.add(activity)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+# ============ Task Completion (All Users!) ============
+
+@app.post("/api/tasks/{task_id}/complete", response_model=TaskResponse)
+def complete_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Mark task as complete. All authenticated users can do this (including viewers)."""
+    db_task = db.query(Task).filter(Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if db_task.status == "done":
+        raise HTTPException(status_code=400, detail="Task already completed")
+
+    old_status = db_task.status
+    db_task.status = "done"
+    db_task.completed_at = datetime.utcnow()
+
+    # Move to Done column if board has one
+    done_column = db.query(TaskColumn).filter(
+        TaskColumn.board_id == db_task.board_id,
+        TaskColumn.status == "done"
+    ).first()
+    if done_column:
+        db_task.column_id = done_column.id
+
+    activity = TaskActivity(
+        task_id=task_id,
+        user_id=current_user.id,
+        activity_type="completed",
+        description="Marked task as complete",
+        old_value=old_status,
+        new_value="done"
+    )
+    db.add(activity)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+@app.post("/api/tasks/{task_id}/reopen", response_model=TaskResponse)
+def reopen_task(
+    task_id: int,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Reopen a completed task (editor/admin only)."""
+    db_task = db.query(Task).filter(Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if db_task.status != "done":
+        raise HTTPException(status_code=400, detail="Task is not completed")
+
+    db_task.status = "todo"
+    db_task.completed_at = None
+
+    # Move to Todo column
+    todo_column = db.query(TaskColumn).filter(
+        TaskColumn.board_id == db_task.board_id,
+        TaskColumn.status == "todo"
+    ).first()
+    if todo_column:
+        db_task.column_id = todo_column.id
+
+    activity = TaskActivity(
+        task_id=task_id,
+        user_id=current_user.id,
+        activity_type="reopened",
+        description="Reopened task"
+    )
+    db.add(activity)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+# ============ Task Move (Drag-and-Drop) ============
+
+@app.post("/api/tasks/move", response_model=TaskResponse)
+def move_task(
+    move: TaskMove,
+    current_user: User = Depends(get_editor_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Move task to different column/position (drag-and-drop)."""
+    db_task = db.query(Task).filter(Task.id == move.task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    target_column = db.query(TaskColumn).filter(TaskColumn.id == move.target_column_id).first()
+    if not target_column:
+        raise HTTPException(status_code=404, detail="Target column not found")
+
+    old_column_id = db_task.column_id
+
+    # If moving to different column, update status
+    if target_column.id != old_column_id:
+        db_task.column_id = target_column.id
+        db_task.status = target_column.status
+
+        # Update completed_at based on new status
+        if target_column.status == "done" and not db_task.completed_at:
+            db_task.completed_at = datetime.utcnow()
+        elif target_column.status != "done":
+            db_task.completed_at = None
+
+    # Reorder tasks in target column
+    tasks_in_target = db.query(Task).filter(
+        Task.column_id == move.target_column_id,
+        Task.id != move.task_id
+    ).order_by(Task.position).all()
+
+    # Insert at target position
+    for i, t in enumerate(tasks_in_target):
+        if i >= move.target_position:
+            t.position = i + 1
+        else:
+            t.position = i
+
+    db_task.position = move.target_position
+
+    # Log if column changed
+    if old_column_id != target_column.id:
+        activity = TaskActivity(
+            task_id=move.task_id,
+            user_id=current_user.id,
+            activity_type="status_changed",
+            description=f"Moved to {target_column.name}",
+            old_value=str(old_column_id),
+            new_value=str(target_column.id)
+        )
+        db.add(activity)
+
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+# ============ Task Comments ============
+
+@app.get("/api/tasks/{task_id}/comments", response_model=List[TaskCommentResponse])
+def get_task_comments(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(TaskComment).filter(TaskComment.task_id == task_id).order_by(TaskComment.created_at).all()
+
+
+@app.post("/api/comments", response_model=TaskCommentResponse)
+def create_comment(
+    comment: TaskCommentCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Add a comment. All authenticated users can comment."""
+    task = db.query(Task).filter(Task.id == comment.task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db_comment = TaskComment(
+        task_id=comment.task_id,
+        user_id=current_user.id,
+        content=comment.content
+    )
+    db.add(db_comment)
+
+    activity = TaskActivity(
+        task_id=comment.task_id,
+        user_id=current_user.id,
+        activity_type="commented",
+        description="Added a comment"
+    )
+    db.add(activity)
+    db.commit()
+    db.refresh(db_comment)
+    return db_comment
+
+
+@app.patch("/api/comments/{comment_id}", response_model=TaskCommentResponse)
+def update_comment(
+    comment_id: int,
+    comment: TaskCommentUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db_comment = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Only owner or admin can edit
+    if db_comment.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Cannot edit this comment")
+
+    db_comment.content = comment.content
+    db_comment.is_edited = True
+    db.commit()
+    db.refresh(db_comment)
+    return db_comment
+
+
+@app.delete("/api/comments/{comment_id}")
+def delete_comment(
+    comment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db_comment = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if db_comment.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Cannot delete this comment")
+
+    db.delete(db_comment)
+    db.commit()
+    return {"ok": True}
+
+
+# ============ Time Tracking ============
+
+@app.get("/api/tasks/{task_id}/time-entries", response_model=List[TimeEntryResponse])
+def get_time_entries(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(TimeEntry).filter(TimeEntry.task_id == task_id).order_by(TimeEntry.created_at.desc()).all()
+
+
+@app.post("/api/time-entries", response_model=TimeEntryResponse)
+def create_time_entry(
+    entry: TimeEntryCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a manual time entry."""
+    task = db.query(Task).filter(Task.id == entry.task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db_entry = TimeEntry(
+        task_id=entry.task_id,
+        user_id=current_user.id,
+        duration_minutes=entry.duration_minutes,
+        description=entry.description,
+        is_running=False
+    )
+    db.add(db_entry)
+
+    if entry.duration_minutes:
+        activity = TaskActivity(
+            task_id=entry.task_id,
+            user_id=current_user.id,
+            activity_type="time_logged",
+            description=f"Logged {entry.duration_minutes} minutes"
+        )
+        db.add(activity)
+
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+
+@app.post("/api/time-entries/start", response_model=TimeEntryResponse)
+def start_timer(
+    timer: TimerStart,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Start a timer for a task."""
+    task = db.query(Task).filter(Task.id == timer.task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Check for existing running timer for this user
+    existing = db.query(TimeEntry).filter(
+        TimeEntry.user_id == current_user.id,
+        TimeEntry.is_running == True
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="You have a running timer. Stop it first.")
+
+    db_entry = TimeEntry(
+        task_id=timer.task_id,
+        user_id=current_user.id,
+        started_at=datetime.utcnow(),
+        description=timer.description,
+        is_running=True
+    )
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+
+@app.post("/api/time-entries/{entry_id}/stop", response_model=TimeEntryResponse)
+def stop_timer(
+    entry_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Stop a running timer."""
+    db_entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
+    if not db_entry:
+        raise HTTPException(status_code=404, detail="Time entry not found")
+
+    if db_entry.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot stop another user's timer")
+
+    if not db_entry.is_running:
+        raise HTTPException(status_code=400, detail="Timer is not running")
+
+    now = datetime.utcnow()
+    db_entry.ended_at = now
+    db_entry.is_running = False
+    db_entry.duration_minutes = int((now - db_entry.started_at).total_seconds() / 60)
+
+    activity = TaskActivity(
+        task_id=db_entry.task_id,
+        user_id=current_user.id,
+        activity_type="time_logged",
+        description=f"Tracked {db_entry.duration_minutes} minutes"
+    )
+    db.add(activity)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+
+@app.get("/api/time-entries/running", response_model=TimeEntryResponse)
+def get_running_timer(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get the current user's running timer if any."""
+    entry = db.query(TimeEntry).filter(
+        TimeEntry.user_id == current_user.id,
+        TimeEntry.is_running == True
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="No running timer")
+    return entry
+
+
+@app.delete("/api/time-entries/{entry_id}")
+def delete_time_entry(
+    entry_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db_entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
+    if not db_entry:
+        raise HTTPException(status_code=404, detail="Time entry not found")
+
+    if db_entry.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Cannot delete this entry")
+
+    db.delete(db_entry)
+    db.commit()
+    return {"ok": True}
+
+
+# ============ Task Activity ============
+
+@app.get("/api/tasks/{task_id}/activity", response_model=List[TaskActivityResponse])
+def get_task_activity(
+    task_id: int,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(TaskActivity).filter(
+        TaskActivity.task_id == task_id
+    ).order_by(TaskActivity.created_at.desc()).limit(limit).all()
+
+
+# ============ Users list for task assignment ============
+
+@app.get("/api/users-list", response_model=List[UserBrief])
+def get_users_list(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get list of users for assignment dropdowns."""
+    users = db.query(User).filter(User.is_active == True).order_by(User.name, User.email).all()
+    return users

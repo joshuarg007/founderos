@@ -519,3 +519,234 @@ class WebLinkResponse(WebLinkBase):
 
     class Config:
         from_attributes = True
+
+
+# ============ Task Management Schemas ============
+
+# Helper schema for user info in responses
+class UserBrief(BaseModel):
+    id: int
+    email: str
+    name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# TaskBoard schemas
+class TaskBoardBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+
+
+class TaskBoardCreate(TaskBoardBase):
+    pass
+
+
+class TaskBoardUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    is_default: Optional[bool] = None
+
+
+# TaskColumn schemas
+class TaskColumnBase(BaseModel):
+    name: str
+    status: str = "todo"
+    color: Optional[str] = None
+    wip_limit: Optional[int] = None
+
+
+class TaskColumnCreate(TaskColumnBase):
+    board_id: int
+    position: Optional[int] = None
+
+
+class TaskColumnUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    position: Optional[int] = None
+    color: Optional[str] = None
+    wip_limit: Optional[int] = None
+
+
+class TaskColumnResponse(BaseModel):
+    id: int
+    board_id: int
+    name: str
+    status: str
+    position: int
+    color: Optional[str] = None
+    wip_limit: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TaskBoardResponse(TaskBoardBase):
+    id: int
+    is_default: bool
+    created_by_id: int
+    columns: List[TaskColumnResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Task schemas
+class TaskBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    priority: str = "medium"
+    due_date: Optional[datetime] = None
+    reminder_days: int = 1
+    start_date: Optional[datetime] = None
+    estimated_minutes: Optional[int] = None
+    tags: Optional[str] = None
+    icon: Optional[str] = None
+    related_deadline_id: Optional[int] = None
+    related_contact_id: Optional[int] = None
+
+
+class TaskCreate(TaskBase):
+    board_id: int
+    column_id: Optional[int] = None
+    status: str = "todo"
+    assigned_to_id: Optional[int] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    column_id: Optional[int] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    position: Optional[int] = None
+    due_date: Optional[datetime] = None
+    reminder_days: Optional[int] = None
+    start_date: Optional[datetime] = None
+    estimated_minutes: Optional[int] = None
+    tags: Optional[str] = None
+    icon: Optional[str] = None
+    related_deadline_id: Optional[int] = None
+    related_contact_id: Optional[int] = None
+
+
+class TaskAssign(BaseModel):
+    assigned_to_id: Optional[int] = None
+
+
+class TaskMove(BaseModel):
+    task_id: int
+    target_column_id: int
+    target_position: int
+
+
+class TaskResponse(TaskBase):
+    id: int
+    board_id: int
+    column_id: Optional[int] = None
+    status: str
+    position: int
+    created_by_id: int
+    assigned_to_id: Optional[int] = None
+    completed_at: Optional[datetime] = None
+    created_by: Optional[UserBrief] = None
+    assigned_to: Optional[UserBrief] = None
+    total_time_minutes: Optional[int] = None
+    comment_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# TaskComment schemas
+class TaskCommentBase(BaseModel):
+    content: str
+
+
+class TaskCommentCreate(TaskCommentBase):
+    task_id: int
+
+
+class TaskCommentUpdate(BaseModel):
+    content: str
+
+
+class TaskCommentResponse(TaskCommentBase):
+    id: int
+    task_id: int
+    user_id: int
+    user: Optional[UserBrief] = None
+    is_edited: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# TimeEntry schemas
+class TimeEntryBase(BaseModel):
+    description: Optional[str] = None
+
+
+class TimeEntryCreate(TimeEntryBase):
+    task_id: int
+    duration_minutes: Optional[int] = None
+
+
+class TimeEntryUpdate(BaseModel):
+    description: Optional[str] = None
+    duration_minutes: Optional[int] = None
+
+
+class TimerStart(BaseModel):
+    task_id: int
+    description: Optional[str] = None
+
+
+class TimeEntryResponse(TimeEntryBase):
+    id: int
+    task_id: int
+    user_id: int
+    user: Optional[UserBrief] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    is_running: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# TaskActivity schemas
+class TaskActivityResponse(BaseModel):
+    id: int
+    task_id: int
+    user_id: int
+    user: Optional[UserBrief] = None
+    activity_type: str
+    description: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Column reorder schema
+class ColumnReorder(BaseModel):
+    id: int
+    position: int

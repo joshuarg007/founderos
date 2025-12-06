@@ -334,3 +334,174 @@ class WebLink(Base):
     last_visited = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============ Task Management Models ============
+
+class TaskStatus(str, enum.Enum):
+    BACKLOG = "backlog"
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    IN_REVIEW = "in_review"
+    DONE = "done"
+
+
+class TaskPriority(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class ActivityType(str, enum.Enum):
+    CREATED = "created"
+    UPDATED = "updated"
+    STATUS_CHANGED = "status_changed"
+    ASSIGNED = "assigned"
+    COMMENTED = "commented"
+    TIME_LOGGED = "time_logged"
+    COMPLETED = "completed"
+    REOPENED = "reopened"
+
+
+class TaskBoard(Base):
+    """Kanban board configuration"""
+    __tablename__ = "task_boards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    is_default = Column(Boolean, default=False)
+    icon = Column(String(100), nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    created_by = relationship("User", backref="created_boards")
+    columns = relationship("TaskColumn", back_populates="board", order_by="TaskColumn.position", cascade="all, delete-orphan")
+
+
+class TaskColumn(Base):
+    """Kanban column configuration"""
+    __tablename__ = "task_columns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    board_id = Column(Integer, ForeignKey("task_boards.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    status = Column(String(50), default=TaskStatus.TODO.value)
+    position = Column(Integer, default=0)
+    color = Column(String(20), nullable=True)
+    wip_limit = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    board = relationship("TaskBoard", back_populates="columns")
+    tasks = relationship("Task", back_populates="column", order_by="Task.position")
+
+
+class Task(Base):
+    """Core task entity"""
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # Status & Organization
+    board_id = Column(Integer, ForeignKey("task_boards.id", ondelete="CASCADE"), nullable=False)
+    column_id = Column(Integer, ForeignKey("task_columns.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(50), default=TaskStatus.TODO.value)
+    priority = Column(String(20), default=TaskPriority.MEDIUM.value)
+    position = Column(Integer, default=0)
+
+    # Dates
+    due_date = Column(DateTime, nullable=True)
+    reminder_days = Column(Integer, default=1)
+    start_date = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Time tracking
+    estimated_minutes = Column(Integer, nullable=True)
+
+    # Relationships to Users
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Integration relationships
+    related_deadline_id = Column(Integer, ForeignKey("deadlines.id"), nullable=True)
+    related_contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
+
+    # Metadata
+    tags = Column(String(500), nullable=True)
+    icon = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    board = relationship("TaskBoard", backref="tasks")
+    column = relationship("TaskColumn", back_populates="tasks")
+    created_by = relationship("User", foreign_keys=[created_by_id], backref="created_tasks")
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id], backref="assigned_tasks")
+    related_deadline = relationship("Deadline", backref="tasks")
+    related_contact = relationship("Contact", backref="tasks")
+    comments = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan")
+    time_entries = relationship("TimeEntry", back_populates="task", cascade="all, delete-orphan")
+    activities = relationship("TaskActivity", back_populates="task", cascade="all, delete-orphan")
+
+
+class TaskComment(Base):
+    """Comments on tasks"""
+    __tablename__ = "task_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(Text, nullable=False)
+    is_edited = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    task = relationship("Task", back_populates="comments")
+    user = relationship("User", backref="task_comments")
+
+
+class TimeEntry(Base):
+    """Time tracking entries"""
+    __tablename__ = "time_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Time tracking
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    duration_minutes = Column(Integer, nullable=True)
+
+    description = Column(String(500), nullable=True)
+    is_running = Column(Boolean, default=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    task = relationship("Task", back_populates="time_entries")
+    user = relationship("User", backref="time_entries")
+
+
+class TaskActivity(Base):
+    """Activity log for tasks"""
+    __tablename__ = "task_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    activity_type = Column(String(50), nullable=False)
+    description = Column(Text, nullable=False)
+    old_value = Column(String(255), nullable=True)
+    new_value = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("Task", back_populates="activities")
+    user = relationship("User", backref="task_activities")

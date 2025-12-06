@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   Calendar,
   Clock,
   CheckCircle2,
+  CheckSquare,
   ChevronRight,
   Mail,
   Phone,
@@ -16,6 +18,7 @@ import {
 import {
   getDailyBrief,
   completeDeadlineAction,
+  completeTaskFromBrief,
   recordContactTouch,
 } from '../lib/api';
 import type { DailyBrief as DailyBriefType, DailyBriefItem } from '../lib/api';
@@ -48,6 +51,18 @@ export default function DailyBrief() {
       await loadBrief();
     } catch (err) {
       console.error('Failed to complete deadline:', err);
+    } finally {
+      setCompleting(null);
+    }
+  };
+
+  const handleCompleteTask = async (id: number) => {
+    setCompleting(id);
+    try {
+      await completeTaskFromBrief(id);
+      await loadBrief();
+    } catch (err) {
+      console.error('Failed to complete task:', err);
     } finally {
       setCompleting(null);
     }
@@ -86,27 +101,55 @@ export default function DailyBrief() {
   const ActionItem = ({ item, onComplete }: { item: DailyBriefItem; onComplete?: () => void }) => {
     const isDeadline = item.type === 'deadline';
     const isDocument = item.type === 'document';
+    const isTask = item.type === 'task';
 
-    return (
+    const getPriorityColor = (priority?: string) => {
+      switch (priority) {
+        case 'urgent': return 'text-red-400 bg-red-500/20';
+        case 'high': return 'text-orange-400 bg-orange-500/20';
+        case 'medium': return 'text-yellow-400 bg-yellow-500/20';
+        default: return 'text-gray-400 bg-gray-500/20';
+      }
+    };
+
+    const content = (
       <div className="flex items-center justify-between p-4 rounded-xl bg-[#1a1d24] border border-white/10 hover:border-white/20 transition group">
         <div className="flex items-center gap-4">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
             isDeadline ? 'bg-violet-500/20 text-violet-400' :
             isDocument ? 'bg-amber-500/20 text-amber-400' :
+            isTask ? 'bg-emerald-500/20 text-emerald-400' :
             'bg-cyan-500/20 text-cyan-400'
           }`}>
             {isDeadline ? <Calendar className="w-5 h-5" /> :
              isDocument ? <FileText className="w-5 h-5" /> :
+             isTask ? <CheckSquare className="w-5 h-5" /> :
              <User className="w-5 h-5" />}
           </div>
           <div>
-            <h4 className="font-medium text-white">{item.title || item.name}</h4>
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium text-white">{item.title || item.name}</h4>
+              {isTask && item.priority && item.priority !== 'medium' && (
+                <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${getPriorityColor(item.priority)}`}>
+                  {item.priority}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-sm text-gray-500">
               {item.deadline_type && (
                 <span className="capitalize">{item.deadline_type}</span>
               )}
               {item.category && (
                 <span className="capitalize">{item.category}</span>
+              )}
+              {isTask && item.status && (
+                <span className="capitalize">{item.status.replace('_', ' ')}</span>
+              )}
+              {isTask && item.assigned_to && (
+                <>
+                  <span>•</span>
+                  <span>@{item.assigned_to}</span>
+                </>
               )}
               {(item.due_date || item.expiration_date) && (
                 <>
@@ -131,21 +174,31 @@ export default function DailyBrief() {
               {getUrgencyLabel(item.days_until)}
             </span>
           )}
-          {isDeadline && onComplete && (
+          {(isDeadline || isTask) && onComplete && (
             <button
-              onClick={onComplete}
+              onClick={(e) => { e.preventDefault(); onComplete(); }}
               disabled={completing === item.id}
               className="px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition font-medium text-sm disabled:opacity-50"
             >
               {completing === item.id ? 'Completing...' : 'Done'}
             </button>
           )}
-          {!isDeadline && (
+          {!isDeadline && !isTask && (
+            <ChevronRight className="w-5 h-5 text-gray-600 group-hover:text-gray-400 transition" />
+          )}
+          {isTask && (
             <ChevronRight className="w-5 h-5 text-gray-600 group-hover:text-gray-400 transition" />
           )}
         </div>
       </div>
     );
+
+    // Wrap task items in a Link to the tasks page
+    if (isTask) {
+      return <Link to="/tasks" className="block">{content}</Link>;
+    }
+
+    return content;
   };
 
   const ContactCard = ({ item }: { item: DailyBriefItem }) => (
@@ -269,7 +322,11 @@ export default function DailyBrief() {
               <ActionItem
                 key={`${item.type}-${item.id}`}
                 item={item}
-                onComplete={item.type === 'deadline' ? () => handleCompleteDeadline(item.id) : undefined}
+                onComplete={
+                  item.type === 'deadline' ? () => handleCompleteDeadline(item.id) :
+                  item.type === 'task' ? () => handleCompleteTask(item.id) :
+                  undefined
+                }
               />
             ))}
           </div>
@@ -291,7 +348,11 @@ export default function DailyBrief() {
               <ActionItem
                 key={`${item.type}-${item.id}`}
                 item={item}
-                onComplete={item.type === 'deadline' ? () => handleCompleteDeadline(item.id) : undefined}
+                onComplete={
+                  item.type === 'deadline' ? () => handleCompleteDeadline(item.id) :
+                  item.type === 'task' ? () => handleCompleteTask(item.id) :
+                  undefined
+                }
               />
             ))}
           </div>
@@ -313,7 +374,11 @@ export default function DailyBrief() {
               <ActionItem
                 key={`${item.type}-${item.id}`}
                 item={item}
-                onComplete={item.type === 'deadline' ? () => handleCompleteDeadline(item.id) : undefined}
+                onComplete={
+                  item.type === 'deadline' ? () => handleCompleteDeadline(item.id) :
+                  item.type === 'task' ? () => handleCompleteTask(item.id) :
+                  undefined
+                }
               />
             ))}
           </div>
@@ -335,6 +400,11 @@ export default function DailyBrief() {
               <ActionItem
                 key={`${item.type}-${item.id}`}
                 item={item}
+                onComplete={
+                  item.type === 'deadline' ? () => handleCompleteDeadline(item.id) :
+                  item.type === 'task' ? () => handleCompleteTask(item.id) :
+                  undefined
+                }
               />
             ))}
             {brief.heads_up.length > 5 && (
