@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import List
 import os
 import shutil
+import logging
 
 from .database import engine, get_db, Base
 from .models import (
@@ -38,31 +39,94 @@ from .schemas import (
 )
 from .vault import (
     generate_salt, derive_key, hash_master_password, verify_master_password,
-    encrypt_value, decrypt_value, VaultSession
+    encrypt_value, decrypt_value, VaultSession,
+    encrypt_identifier, decrypt_identifier, get_app_encryption_key
 )
+from .security_middleware import (
+    SecurityHeadersMiddleware,
+    RateLimitMiddleware,
+    AuditLogMiddleware,
+    RequestValidationMiddleware
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="FounderOS API", version="1.0.0")
+app = FastAPI(
+    title="FounderOS API",
+    version="1.0.0",
+    docs_url="/docs" if os.getenv("ENVIRONMENT") != "production" else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if os.getenv("ENVIRONMENT") != "production" else None
+)
 
-# CORS - configure from environment
+# ============ SECURITY MIDDLEWARE (Order matters - first added = last executed) ============
+
+# 1. Security Headers - Always applied
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 2. Rate Limiting - Protect against abuse
+app.add_middleware(RateLimitMiddleware)
+
+# 3. Request Validation - Block malicious requests
+app.add_middleware(RequestValidationMiddleware)
+
+# 4. Audit Logging - Track sensitive operations
+app.add_middleware(AuditLogMiddleware)
+
+# 5. CORS - Tightened configuration
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://founders.axiondeep.com")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in CORS_ORIGINS.split(",")],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Restricted methods - only what's needed
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    # Restricted headers - only what's needed
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "Cookie"
+    ],
+    expose_headers=[
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset"
+    ],
+    max_age=600,  # Cache preflight for 10 minutes
 )
 
-# Create uploads directory
+# Create uploads directory with restricted permissions
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Include auth router
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+
+# Startup validation
+@app.on_event("startup")
+async def startup_validation():
+    """Validate security configuration on startup."""
+    secret_key = os.getenv("SECRET_KEY", "")
+    if not secret_key or secret_key == "founderos-dev-secret-change-in-production":
+        if os.getenv("ENVIRONMENT") == "production":
+            logger.error("CRITICAL: Using default SECRET_KEY in production!")
+        else:
+            logger.warning("Using default SECRET_KEY - set SECRET_KEY env var for production")
+
+    app_key = os.getenv("APP_ENCRYPTION_KEY", "")
+    if not app_key and os.getenv("ENVIRONMENT") == "production":
+        logger.warning("APP_ENCRYPTION_KEY not set - using derived key")
+
+    logger.info("FounderOS API started with security middleware enabled")
 
 
 # ============ Dashboard ============
@@ -575,30 +639,71 @@ def update_business_info(info: BusinessInfoUpdate, db: Session = Depends(get_db)
     return db_info
 
 
-# ============ Business Identifiers ============
+# ============ Business Identifiers (ENCRYPTED) ============
+
+# Get application encryption key for identifiers
+_app_encryption_key = None
+
+def get_identifier_encryption_key() -> bytes:
+    """Get or cache the application encryption key."""
+    global _app_encryption_key
+    if _app_encryption_key is None:
+        _app_encryption_key = get_app_encryption_key()
+    return _app_encryption_key
+
+
+def decrypt_identifier_value(encrypted_value: str) -> str:
+    """Decrypt a stored identifier value."""
+    if not encrypted_value:
+        return ""
+    try:
+        key = get_identifier_encryption_key()
+        return decrypt_identifier(encrypted_value, key)
+    except Exception:
+        # If decryption fails, assume it's a legacy unencrypted value
+        return encrypted_value
+
+
+def encrypt_identifier_value(value: str) -> str:
+    """Encrypt an identifier value for storage."""
+    if not value:
+        return ""
+    key = get_identifier_encryption_key()
+    return encrypt_identifier(value, key)
+
+
 def mask_identifier(value: str, identifier_type: str) -> str:
     """Mask sensitive identifier values, showing only last few characters"""
     if not value:
         return ""
+    # Decrypt if needed
+    decrypted = decrypt_identifier_value(value)
+    if not decrypted:
+        return ""
+
     if identifier_type == "ein":
         # EIN format: XX-XXXXXXX, show last 4: XX-XXX1234
-        if len(value) >= 4:
-            return "XX-XXX" + value[-4:]
-        return "X" * len(value)
+        if len(decrypted) >= 4:
+            return "XX-XXX" + decrypted[-4:]
+        return "X" * len(decrypted)
     elif identifier_type == "duns":
         # D-U-N-S format: XX-XXX-XXXX, show last 4
-        if len(value) >= 4:
-            return "XX-XXX-" + value[-4:]
-        return "X" * len(value)
+        if len(decrypted) >= 4:
+            return "XX-XXX-" + decrypted[-4:]
+        return "X" * len(decrypted)
     else:
         # Generic masking - show last 4 if long enough
-        if len(value) > 4:
-            return "X" * (len(value) - 4) + value[-4:]
-        return "X" * len(value)
+        if len(decrypted) > 4:
+            return "X" * (len(decrypted) - 4) + decrypted[-4:]
+        return "X" * len(decrypted)
 
 
 @app.get("/api/business-identifiers", response_model=List[BusinessIdentifierMasked])
-def get_business_identifiers(db: Session = Depends(get_db)):
+def get_business_identifiers(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all identifiers with masked values (requires auth)."""
     identifiers = db.query(BusinessIdentifier).order_by(BusinessIdentifier.identifier_type).all()
     masked_list = []
     for ident in identifiers:
@@ -619,53 +724,157 @@ def get_business_identifiers(db: Session = Depends(get_db)):
 
 
 @app.get("/api/business-identifiers/{identifier_id}", response_model=BusinessIdentifierResponse)
-def get_business_identifier(identifier_id: int, db: Session = Depends(get_db)):
-    """Get full (unmasked) identifier - use with caution"""
+def get_business_identifier(
+    identifier_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get full (decrypted) identifier - requires authentication."""
     ident = db.query(BusinessIdentifier).filter(BusinessIdentifier.id == identifier_id).first()
     if not ident:
         raise HTTPException(status_code=404, detail="Identifier not found")
-    return ident
+
+    # Decrypt the value for response
+    decrypted_value = decrypt_identifier_value(ident.value)
+
+    # Log access to sensitive data
+    logger.info(f"User {current_user.email} accessed identifier {identifier_id}")
+
+    return BusinessIdentifierResponse(
+        id=ident.id,
+        identifier_type=ident.identifier_type,
+        label=ident.label,
+        value=decrypted_value,
+        issuing_authority=ident.issuing_authority,
+        issue_date=ident.issue_date,
+        expiration_date=ident.expiration_date,
+        notes=ident.notes,
+        related_document_id=ident.related_document_id,
+        created_at=ident.created_at,
+        updated_at=ident.updated_at
+    )
 
 
 @app.get("/api/business-identifiers/{identifier_id}/value")
-def get_business_identifier_value(identifier_id: int, db: Session = Depends(get_db)):
-    """Get just the value for copying"""
+def get_business_identifier_value(
+    identifier_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get just the decrypted value for copying (requires auth)."""
     ident = db.query(BusinessIdentifier).filter(BusinessIdentifier.id == identifier_id).first()
     if not ident:
         raise HTTPException(status_code=404, detail="Identifier not found")
-    return {"value": ident.value}
+
+    decrypted_value = decrypt_identifier_value(ident.value)
+    logger.info(f"User {current_user.email} copied identifier {identifier_id}")
+
+    return {"value": decrypted_value}
 
 
 @app.post("/api/business-identifiers", response_model=BusinessIdentifierResponse)
-def create_business_identifier(identifier: BusinessIdentifierCreate, db: Session = Depends(get_db)):
-    db_ident = BusinessIdentifier(**identifier.model_dump())
+def create_business_identifier(
+    identifier: BusinessIdentifierCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new identifier (value will be encrypted)."""
+    # Require editor or admin
+    if current_user.role not in ["admin", "editor"]:
+        raise HTTPException(status_code=403, detail="Editor access required")
+
+    # Encrypt the value before storing
+    identifier_data = identifier.model_dump()
+    identifier_data["value"] = encrypt_identifier_value(identifier_data["value"])
+
+    db_ident = BusinessIdentifier(**identifier_data)
     db.add(db_ident)
     db.commit()
     db.refresh(db_ident)
-    return db_ident
+
+    logger.info(f"User {current_user.email} created identifier {db_ident.id}")
+
+    # Return with decrypted value
+    return BusinessIdentifierResponse(
+        id=db_ident.id,
+        identifier_type=db_ident.identifier_type,
+        label=db_ident.label,
+        value=decrypt_identifier_value(db_ident.value),
+        issuing_authority=db_ident.issuing_authority,
+        issue_date=db_ident.issue_date,
+        expiration_date=db_ident.expiration_date,
+        notes=db_ident.notes,
+        related_document_id=db_ident.related_document_id,
+        created_at=db_ident.created_at,
+        updated_at=db_ident.updated_at
+    )
 
 
 @app.patch("/api/business-identifiers/{identifier_id}", response_model=BusinessIdentifierResponse)
-def update_business_identifier(identifier_id: int, identifier: BusinessIdentifierUpdate, db: Session = Depends(get_db)):
+def update_business_identifier(
+    identifier_id: int,
+    identifier: BusinessIdentifierUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update an identifier (value will be encrypted if changed)."""
+    # Require editor or admin
+    if current_user.role not in ["admin", "editor"]:
+        raise HTTPException(status_code=403, detail="Editor access required")
+
     db_ident = db.query(BusinessIdentifier).filter(BusinessIdentifier.id == identifier_id).first()
     if not db_ident:
         raise HTTPException(status_code=404, detail="Identifier not found")
 
-    for key, value in identifier.model_dump(exclude_unset=True).items():
+    update_data = identifier.model_dump(exclude_unset=True)
+
+    # Encrypt the value if it's being updated
+    if "value" in update_data and update_data["value"]:
+        update_data["value"] = encrypt_identifier_value(update_data["value"])
+
+    for key, value in update_data.items():
         setattr(db_ident, key, value)
 
     db.commit()
     db.refresh(db_ident)
-    return db_ident
+
+    logger.info(f"User {current_user.email} updated identifier {identifier_id}")
+
+    # Return with decrypted value
+    return BusinessIdentifierResponse(
+        id=db_ident.id,
+        identifier_type=db_ident.identifier_type,
+        label=db_ident.label,
+        value=decrypt_identifier_value(db_ident.value),
+        issuing_authority=db_ident.issuing_authority,
+        issue_date=db_ident.issue_date,
+        expiration_date=db_ident.expiration_date,
+        notes=db_ident.notes,
+        related_document_id=db_ident.related_document_id,
+        created_at=db_ident.created_at,
+        updated_at=db_ident.updated_at
+    )
 
 
 @app.delete("/api/business-identifiers/{identifier_id}")
-def delete_business_identifier(identifier_id: int, db: Session = Depends(get_db)):
+def delete_business_identifier(
+    identifier_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an identifier (admin only)."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     ident = db.query(BusinessIdentifier).filter(BusinessIdentifier.id == identifier_id).first()
     if not ident:
         raise HTTPException(status_code=404, detail="Identifier not found")
+
     db.delete(ident)
     db.commit()
+
+    logger.info(f"User {current_user.email} deleted identifier {identifier_id}")
+
     return {"ok": True}
 
 

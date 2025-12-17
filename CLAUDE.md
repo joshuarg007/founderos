@@ -1,5 +1,23 @@
 # FounderOS - Command Center for Founders
 
+> **FOR CLAUDE: Read the SESSION STATE section before doing anything.**
+
+---
+
+## SESSION STATE (Update before ending each session)
+**Last Updated:** 2025-12-08
+
+### Where We Left Off:
+- [Update this each session]
+
+### Immediate Next Steps:
+- [Update this each session]
+
+### Current Blockers:
+- None documented
+
+---
+
 ## Project Overview
 A comprehensive startup management platform with React frontend and FastAPI backend.
 
