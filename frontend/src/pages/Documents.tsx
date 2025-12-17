@@ -387,26 +387,48 @@ export default function Documents() {
                   <button
                     onClick={async () => {
                       try {
-                        // Secure download with auth credentials
-                        const response = await fetch(`${API_BASE}/documents/${doc.id}/download`, {
-                          credentials: 'include'
+                        const url = `${API_BASE}/documents/${doc.id}/download`;
+                        console.log('Downloading from:', url);
+
+                        const response = await fetch(url, {
+                          method: 'GET',
+                          credentials: 'include',
+                          headers: {
+                            'Accept': 'application/octet-stream, application/json'
+                          }
                         });
+
+                        console.log('Response status:', response.status);
+
                         if (!response.ok) {
-                          const errorData = await response.json().catch(() => ({}));
-                          throw new Error(errorData.detail || `Error ${response.status}`);
+                          // Try to get error message
+                          const text = await response.text();
+                          console.log('Error response:', text);
+                          let errorMsg = `Error ${response.status}`;
+                          try {
+                            const json = JSON.parse(text);
+                            errorMsg = json.detail || errorMsg;
+                          } catch {
+                            errorMsg = text || errorMsg;
+                          }
+                          throw new Error(errorMsg);
                         }
+
                         const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
+                        console.log('Blob size:', blob.size);
+
+                        const blobUrl = window.URL.createObjectURL(blob);
                         const link = document.createElement('a');
-                        link.href = url;
+                        link.href = blobUrl;
                         link.download = doc.name;
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
-                        window.URL.revokeObjectURL(url);
+                        window.URL.revokeObjectURL(blobUrl);
                       } catch (error) {
-                        console.error('Download failed:', error);
-                        alert(`Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        console.error('Download error:', error);
+                        const msg = error instanceof Error ? error.message : 'Unknown error';
+                        alert(`Download failed: ${msg}`);
                       }
                     }}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-white text-xs hover:bg-white/20 transition"
