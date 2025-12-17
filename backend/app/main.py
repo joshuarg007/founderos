@@ -219,12 +219,52 @@ def record_service_visit(service_id: int, db: Session = Depends(get_db)):
 
 
 # ============ Documents ============
-@app.get("/api/documents", response_model=List[DocumentResponse])
+
+def check_file_exists(file_path: str) -> bool:
+    """Check if a document's file exists on disk."""
+    if not file_path:
+        return False
+
+    storage_name = file_path
+    if storage_name.startswith('/uploads/'):
+        storage_name = storage_name[9:]
+    elif storage_name.startswith('uploads/'):
+        storage_name = storage_name[8:]
+
+    storage_name = os.path.basename(storage_name)
+    if not storage_name:
+        return False
+
+    full_path = os.path.join(UPLOAD_DIR, storage_name)
+    return os.path.isfile(full_path)
+
+
+@app.get("/api/documents")
 def get_documents(category: str = None, db: Session = Depends(get_db)):
     query = db.query(Document)
     if category:
         query = query.filter(Document.category == category)
-    return query.order_by(Document.created_at.desc()).all()
+    documents = query.order_by(Document.created_at.desc()).all()
+
+    # Add file_exists status to each document
+    result = []
+    for doc in documents:
+        doc_dict = {
+            "id": doc.id,
+            "name": doc.name,
+            "category": doc.category,
+            "file_path": doc.file_path,
+            "external_url": doc.external_url,
+            "description": doc.description,
+            "expiration_date": doc.expiration_date,
+            "tags": doc.tags,
+            "created_at": doc.created_at,
+            "updated_at": doc.updated_at,
+            "file_exists": check_file_exists(doc.file_path) if doc.file_path else False
+        }
+        result.append(doc_dict)
+
+    return result
 
 
 @app.post("/api/documents", response_model=DocumentResponse)
@@ -394,6 +434,71 @@ async def download_document(
     )
 
     return response
+
+
+@app.post("/api/documents/{document_id}/reupload")
+async def reupload_document_file(
+    document_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Re-upload a file for an existing document (when original file is missing).
+    """
+    # Require editor or admin
+    if current_user.role not in ["admin", "editor"]:
+        raise HTTPException(status_code=403, detail="Editor access required")
+
+    # Get existing document
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Validate file extension
+    if not validate_file_extension(file.filename):
+        raise HTTPException(status_code=400, detail="File type not allowed")
+
+    # Delete old file if it exists
+    if document.file_path:
+        old_storage_name = document.file_path
+        if old_storage_name.startswith('/uploads/'):
+            old_storage_name = old_storage_name[9:]
+        elif old_storage_name.startswith('uploads/'):
+            old_storage_name = old_storage_name[8:]
+        old_storage_name = os.path.basename(old_storage_name)
+        if old_storage_name:
+            old_path = os.path.join(UPLOAD_DIR, old_storage_name)
+            if os.path.isfile(old_path):
+                try:
+                    os.remove(old_path)
+                except Exception as e:
+                    logger.warning(f"Failed to delete old file {old_path}: {e}")
+
+    # Sanitize and create unique filename
+    safe_name = sanitize_filename(file.filename)
+    unique_id = secrets.token_hex(8)
+    name_part, ext = os.path.splitext(safe_name)
+    storage_name = f"{unique_id}_{name_part}{ext}"
+
+    # Save new file
+    file_path = os.path.join(UPLOAD_DIR, storage_name)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Update document record
+    document.file_path = storage_name
+    db.commit()
+    db.refresh(document)
+
+    logger.info(f"User {current_user.email} re-uploaded file for document {document_id}")
+
+    return {
+        "id": document.id,
+        "name": document.name,
+        "file_path": document.file_path,
+        "file_exists": True
+    }
 
 
 @app.get("/api/documents/{document_id}", response_model=DocumentResponse)

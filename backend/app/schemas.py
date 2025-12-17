@@ -75,6 +75,17 @@ class DocumentResponse(DocumentBase):
         from_attributes = True
 
 
+class DocumentWithStatus(DocumentBase):
+    """Document response with file existence status"""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    file_exists: bool = False
+
+    class Config:
+        from_attributes = True
+
+
 # Contact schemas
 class ContactBase(BaseModel):
     name: str

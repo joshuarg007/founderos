@@ -73,6 +73,7 @@ export interface Document {
   tags: string | null;
   created_at: string;
   updated_at: string;
+  file_exists?: boolean;
 }
 
 export const getDocuments = (category?: string) =>

@@ -8,7 +8,9 @@ import {
   X,
   Search,
   CloudUpload,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Upload
 } from 'lucide-react';
 import { getDocuments, createDocument, updateDocument, deleteDocument, type Document } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -363,6 +365,14 @@ export default function Documents() {
                 </div>
               )}
 
+              {/* Missing file warning */}
+              {doc.file_path && doc.file_exists === false && (
+                <div className="flex items-center gap-2 p-2 mb-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span className="text-xs text-red-300">File missing from server</span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between pt-3 border-t border-white/10">
                 {canEdit && (
                   <div className="flex gap-1">
@@ -383,31 +393,57 @@ export default function Documents() {
                   </div>
                 )}
                 {!canEdit && <div />}
-                {doc.file_path && (
+
+                {/* Re-upload button for missing files */}
+                {doc.file_path && doc.file_exists === false && canEdit && (
+                  <label className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-xs hover:bg-amber-500/30 transition cursor-pointer">
+                    <Upload className="w-3 h-3" />
+                    Re-upload
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt,.csv"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          const response = await fetch(`${API_BASE}/documents/${doc.id}/reupload`, {
+                            method: 'POST',
+                            credentials: 'include',
+                            body: formData
+                          });
+                          if (!response.ok) {
+                            const err = await response.json().catch(() => ({}));
+                            throw new Error(err.detail || 'Upload failed');
+                          }
+                          loadDocuments();
+                        } catch (error) {
+                          alert(`Re-upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+
+                {/* Download button for existing files */}
+                {doc.file_path && doc.file_exists !== false && (
                   <button
                     onClick={async () => {
                       try {
-                        const url = `${API_BASE}/documents/${doc.id}/download`;
-                        console.log('Downloading from:', url);
-
-                        const response = await fetch(url, {
+                        const response = await fetch(`${API_BASE}/documents/${doc.id}/download`, {
                           method: 'GET',
                           credentials: 'include',
-                          headers: {
-                            'Accept': 'application/octet-stream, application/json'
-                          }
+                          headers: { 'Accept': 'application/octet-stream, application/json' }
                         });
 
-                        console.log('Response status:', response.status);
-
                         if (!response.ok) {
-                          // Try to get error message
                           const text = await response.text();
-                          console.log('Error response:', text);
                           let errorMsg = `Error ${response.status}`;
                           try {
-                            const json = JSON.parse(text);
-                            errorMsg = json.detail || errorMsg;
+                            errorMsg = JSON.parse(text).detail || errorMsg;
                           } catch {
                             errorMsg = text || errorMsg;
                           }
@@ -415,8 +451,6 @@ export default function Documents() {
                         }
 
                         const blob = await response.blob();
-                        console.log('Blob size:', blob.size);
-
                         const blobUrl = window.URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = blobUrl;
@@ -426,7 +460,6 @@ export default function Documents() {
                         document.body.removeChild(link);
                         window.URL.revokeObjectURL(blobUrl);
                       } catch (error) {
-                        console.error('Download error:', error);
                         const msg = error instanceof Error ? error.message : 'Unknown error';
                         alert(`Download failed: ${msg}`);
                       }
