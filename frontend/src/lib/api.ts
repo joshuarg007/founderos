@@ -682,7 +682,7 @@ export const stopTimer = (entry_id: number) =>
   fetchApi<TimeEntry>(`/time-entries/${entry_id}/stop`, { method: 'POST' });
 
 export const getRunningTimer = () =>
-  fetchApi<TimeEntry>('/time-entries/running');
+  fetchApi<TimeEntry | null>('/time-entries/running');
 
 export const deleteTimeEntry = (id: number) =>
   fetchApi<{ ok: boolean }>(`/time-entries/${id}`, { method: 'DELETE' });

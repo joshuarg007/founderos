@@ -124,7 +124,7 @@ export default function Layout() {
         {/* Floating Daily Brief Button */}
         <Link
           to="/"
-          className="fixed top-6 right-6 z-40 group"
+          className="fixed bottom-6 right-6 z-40 group"
           title="Daily Brief"
         >
           <div className="relative">

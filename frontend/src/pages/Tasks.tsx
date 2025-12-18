@@ -212,16 +212,8 @@ export default function Tasks() {
 
   const handleCompleteTask = async (taskId: number) => {
     // Find the task to get its title for confirmation
-    let taskTitle = 'this task';
-    if (currentBoard) {
-      for (const column of currentBoard.columns) {
-        const task = column.tasks.find(t => t.id === taskId);
-        if (task) {
-          taskTitle = task.title;
-          break;
-        }
-      }
-    }
+    const task = tasks.find(t => t.id === taskId);
+    const taskTitle = task?.title || 'this task';
 
     // Confirm before completing
     if (!window.confirm(`Mark "${taskTitle}" as complete?`)) {
@@ -799,8 +791,10 @@ function TaskDetailPanel({
       // Check for running timer
       try {
         const running = await getRunningTimer();
-        if (running.task_id === task.id) {
+        if (running && running.task_id === task.id) {
           setRunningTimer(running);
+        } else {
+          setRunningTimer(null);
         }
       } catch {
         setRunningTimer(null);
