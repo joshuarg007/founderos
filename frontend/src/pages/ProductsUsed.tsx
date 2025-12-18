@@ -357,7 +357,7 @@ export default function ProductsUsed() {
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                   >
                     {categories.slice(1).map((cat) => (
-                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                      <option key={cat.value} value={cat.value} className="bg-[#1a1d24] text-white">{cat.label}</option>
                     ))}
                   </select>
                 </div>
@@ -391,9 +391,9 @@ export default function ProductsUsed() {
                         onChange={(e) => setFormData({ ...formData, billing_cycle: e.target.value })}
                         className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                       >
-                        <option value="">Select...</option>
+                        <option value="" className="bg-[#1a1d24] text-white">Select...</option>
                         {billingCycles.map((bc) => (
-                          <option key={bc.value} value={bc.value}>{bc.label}</option>
+                          <option key={bc.value} value={bc.value} className="bg-[#1a1d24] text-white">{bc.label}</option>
                         ))}
                       </select>
                     </div>

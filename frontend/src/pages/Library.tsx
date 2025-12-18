@@ -302,9 +302,9 @@ export default function Library() {
                 onChange={(e) => setInfoForm({ ...infoForm, entity_type: e.target.value })}
                 className="w-full px-3 py-2 bg-[#0f1117] border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
               >
-                <option value="">Select...</option>
+                <option value="" className="bg-[#1a1d24] text-white">Select...</option>
                 {ENTITY_TYPES.map(type => (
-                  <option key={type} value={type}>{type}</option>
+                  <option key={type} value={type} className="bg-[#1a1d24] text-white">{type}</option>
                 ))}
               </select>
             </div>
@@ -454,7 +454,7 @@ export default function Library() {
                   className="w-full px-3 py-2 bg-[#1a1d24] border border-white/10 rounded-lg text-white focus:outline-none focus:border-violet-500/50"
                 >
                   {IDENTIFIER_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
+                    <option key={type.value} value={type.value} className="bg-[#1a1d24] text-white">{type.label}</option>
                   ))}
                 </select>
               </div>

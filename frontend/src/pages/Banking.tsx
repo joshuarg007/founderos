@@ -1,0 +1,498 @@
+import { useEffect, useState } from 'react';
+import {
+  Plus,
+  Building2,
+  CreditCard,
+  Pencil,
+  Trash2,
+  X,
+  Star,
+  ExternalLink,
+  Loader2,
+  Wallet
+} from 'lucide-react';
+import { getBankAccounts, createBankAccount, updateBankAccount, deleteBankAccount, type BankAccount } from '../lib/api';
+
+const accountTypes = [
+  { value: 'checking', label: 'Checking Account', icon: '🏦' },
+  { value: 'savings', label: 'Savings Account', icon: '💰' },
+  { value: 'business', label: 'Business Account', icon: '🏢' },
+  { value: 'coinbase', label: 'Coinbase', icon: '₿' },
+  { value: 'paypal', label: 'PayPal', icon: '💳' },
+  { value: 'stripe', label: 'Stripe', icon: '💸' },
+  { value: 'venmo', label: 'Venmo', icon: '📱' },
+  { value: 'wise', label: 'Wise', icon: '🌐' },
+  { value: 'mercury', label: 'Mercury', icon: '🚀' },
+  { value: 'brex', label: 'Brex', icon: '💎' },
+  { value: 'other', label: 'Other', icon: '📄' },
+];
+
+const getTypeInfo = (type: string) => {
+  return accountTypes.find(t => t.value === type) || accountTypes[accountTypes.length - 1];
+};
+
+export default function Banking() {
+  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
+  const [formData, setFormData] = useState({
+    account_type: 'checking',
+    institution_name: '',
+    account_name: '',
+    account_number_last4: '',
+    routing_number: '',
+    account_holder: '',
+    is_primary: false,
+    url: '',
+    icon: '',
+    notes: ''
+  });
+
+  const loadAccounts = async () => {
+    try {
+      const data = await getBankAccounts();
+      setAccounts(data);
+    } catch (err) {
+      console.error('Failed to load accounts:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingAccount) {
+        await updateBankAccount(editingAccount.id, formData);
+      } else {
+        await createBankAccount(formData);
+      }
+      setShowModal(false);
+      setEditingAccount(null);
+      resetForm();
+      loadAccounts();
+    } catch (err) {
+      console.error('Failed to save account:', err);
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      account_type: 'checking',
+      institution_name: '',
+      account_name: '',
+      account_number_last4: '',
+      routing_number: '',
+      account_holder: '',
+      is_primary: false,
+      url: '',
+      icon: '',
+      notes: ''
+    });
+  };
+
+  const handleEdit = (account: BankAccount) => {
+    setEditingAccount(account);
+    setFormData({
+      account_type: account.account_type,
+      institution_name: account.institution_name,
+      account_name: account.account_name || '',
+      account_number_last4: account.account_number_last4 || '',
+      routing_number: account.routing_number || '',
+      account_holder: account.account_holder || '',
+      is_primary: account.is_primary,
+      url: account.url || '',
+      icon: account.icon || '',
+      notes: account.notes || ''
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Delete this account?')) return;
+    try {
+      await deleteBankAccount(id);
+      loadAccounts();
+    } catch (err) {
+      console.error('Failed to delete:', err);
+    }
+  };
+
+  const handleSetPrimary = async (account: BankAccount) => {
+    await updateBankAccount(account.id, { is_primary: true });
+    loadAccounts();
+  };
+
+  // Group accounts by type
+  const bankAccounts = accounts.filter(a => ['checking', 'savings', 'business', 'mercury', 'brex'].includes(a.account_type));
+  const paymentProcessors = accounts.filter(a => ['stripe', 'paypal', 'venmo', 'wise'].includes(a.account_type));
+  const cryptoAccounts = accounts.filter(a => a.account_type === 'coinbase');
+  const otherAccounts = accounts.filter(a => a.account_type === 'other');
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Banking & Finance</h1>
+          <p className="text-gray-400 mt-1">Manage your financial accounts and payment processors</p>
+        </div>
+        <button
+          onClick={() => { setEditingAccount(null); resetForm(); setShowModal(true); }}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
+        >
+          <Plus className="w-4 h-4" />
+          Add Account
+        </button>
+      </div>
+
+      {/* Empty State */}
+      {accounts.length === 0 ? (
+        <div className="text-center py-12">
+          <Building2 className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+          <p className="text-gray-500">No accounts added yet</p>
+          <button
+            onClick={() => setShowModal(true)}
+            className="mt-4 text-cyan-400 hover:text-cyan-300"
+          >
+            Add your first account
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Bank Accounts */}
+          {bankAccounts.length > 0 && (
+            <section>
+              <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-cyan-400" />
+                Bank Accounts
+              </h2>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {bankAccounts.map(account => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onSetPrimary={handleSetPrimary}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Payment Processors */}
+          {paymentProcessors.length > 0 && (
+            <section>
+              <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-violet-400" />
+                Payment Processors
+              </h2>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {paymentProcessors.map(account => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onSetPrimary={handleSetPrimary}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Crypto */}
+          {cryptoAccounts.length > 0 && (
+            <section>
+              <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-amber-400" />
+                Cryptocurrency
+              </h2>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {cryptoAccounts.map(account => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onSetPrimary={handleSetPrimary}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Other */}
+          {otherAccounts.length > 0 && (
+            <section>
+              <h2 className="text-lg font-semibold text-white mb-4">Other Accounts</h2>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {otherAccounts.map(account => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onSetPrimary={handleSetPrimary}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1d24] rounded-xl border border-white/10 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <h2 className="text-lg font-semibold text-white">
+                {editingAccount ? 'Edit Account' : 'Add Account'}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Account Type *</label>
+                <select
+                  value={formData.account_type}
+                  onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
+                >
+                  {accountTypes.map(type => (
+                    <option key={type.value} value={type.value} className="bg-[#1a1d24] text-white">
+                      {type.icon} {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Institution Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.institution_name}
+                  onChange={(e) => setFormData({ ...formData, institution_name: e.target.value })}
+                  placeholder="e.g., Chase, Bank of America, Coinbase"
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Account Nickname</label>
+                <input
+                  type="text"
+                  value={formData.account_name}
+                  onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
+                  placeholder="e.g., Main Operating Account"
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Account # (Last 4)</label>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={formData.account_number_last4}
+                    onChange={(e) => setFormData({ ...formData, account_number_last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    placeholder="1234"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Routing Number</label>
+                  <input
+                    type="text"
+                    maxLength={9}
+                    value={formData.routing_number}
+                    onChange={(e) => setFormData({ ...formData, routing_number: e.target.value.replace(/\D/g, '').slice(0, 9) })}
+                    placeholder="123456789"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Account Holder</label>
+                <input
+                  type="text"
+                  value={formData.account_holder}
+                  onChange={(e) => setFormData({ ...formData, account_holder: e.target.value })}
+                  placeholder="Company Name or Individual"
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Login URL</label>
+                <input
+                  type="url"
+                  value={formData.url}
+                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows={2}
+                  placeholder="Additional notes..."
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_primary}
+                    onChange={(e) => setFormData({ ...formData, is_primary: e.target.checked })}
+                    className="rounded bg-white/5 border-white/10"
+                  />
+                  <Star className="w-4 h-4" />
+                  Primary Account
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-lg text-gray-400 hover:text-white transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
+                >
+                  {editingAccount ? 'Save' : 'Add Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountCard({
+  account,
+  onEdit,
+  onDelete,
+  onSetPrimary
+}: {
+  account: BankAccount;
+  onEdit: (account: BankAccount) => void;
+  onDelete: (id: number) => void;
+  onSetPrimary: (account: BankAccount) => void;
+}) {
+  const typeInfo = getTypeInfo(account.account_type);
+
+  return (
+    <div className="p-4 rounded-xl bg-[#1a1d24] border border-white/10 hover:border-white/20 transition">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{account.icon || typeInfo.icon}</span>
+          <div>
+            <h3 className="font-semibold text-white">{account.institution_name}</h3>
+            {account.account_name && (
+              <span className="text-xs text-gray-500">{account.account_name}</span>
+            )}
+          </div>
+        </div>
+        {account.is_primary && (
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 text-xs">
+            <Star className="w-3 h-3" fill="currentColor" />
+            Primary
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1 mb-3">
+        <div className="text-xs text-gray-500 capitalize">{typeInfo.label}</div>
+        {account.account_number_last4 && (
+          <div className="text-sm text-gray-400">
+            Account: ••••{account.account_number_last4}
+          </div>
+        )}
+        {account.routing_number && (
+          <div className="text-sm text-gray-400">
+            Routing: {account.routing_number}
+          </div>
+        )}
+        {account.account_holder && (
+          <div className="text-sm text-gray-400">
+            Holder: {account.account_holder}
+          </div>
+        )}
+      </div>
+
+      {account.notes && (
+        <p className="text-sm text-gray-500 mb-3 line-clamp-2">{account.notes}</p>
+      )}
+
+      <div className="flex items-center justify-between pt-3 border-t border-white/10">
+        <div className="flex gap-2">
+          <button
+            onClick={() => onEdit(account)}
+            className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onDelete(account.id)}
+            className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/10 transition"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          {!account.is_primary && (
+            <button
+              onClick={() => onSetPrimary(account)}
+              className="p-2 rounded-lg text-gray-500 hover:text-amber-400 hover:bg-white/10 transition"
+              title="Set as primary"
+            >
+              <Star className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        {account.url && (
+          <a
+            href={account.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 text-white text-sm hover:bg-white/20 transition"
+          >
+            Login
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}

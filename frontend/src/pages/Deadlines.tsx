@@ -300,7 +300,7 @@ export default function Deadlines() {
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                   >
                     {deadlineTypes.slice(1).map((type) => (
-                      <option key={type.value} value={type.value}>{type.label}</option>
+                      <option key={type.value} value={type.value} className="bg-[#1a1d24] text-white">{type.label}</option>
                     ))}
                   </select>
                 </div>

@@ -123,6 +123,7 @@ class Document(Base):
     description = Column(Text, nullable=True)
     expiration_date = Column(DateTime, nullable=True)
     tags = Column(String(500), nullable=True)  # Comma-separated tags
+    is_sensitive = Column(Boolean, default=False)  # Requires password to download
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -275,6 +276,8 @@ class Credential(Base):
     encrypted_password = Column(Text, nullable=True)
     encrypted_notes = Column(Text, nullable=True)
     encrypted_totp_secret = Column(Text, nullable=True)  # For 2FA
+    encrypted_purpose = Column(Text, nullable=True)  # Purpose/description of this credential
+    encrypted_custom_fields = Column(Text, nullable=True)  # JSON array of custom fields
 
     related_service_id = Column(Integer, ForeignKey("services.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -505,6 +508,78 @@ class TaskActivity(Base):
 
     task = relationship("Task", back_populates="activities")
     user = relationship("User", backref="task_activities")
+
+
+class WebPresence(Base):
+    """Web presence tracking - domain, email, website, social media"""
+    __tablename__ = "web_presence"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Domain
+    domain_name = Column(String(255), nullable=True)
+    domain_registrar = Column(String(100), nullable=True)
+    domain_expiration = Column(DateTime, nullable=True)
+    domain_privacy = Column(Boolean, default=False)
+    domain_auto_renew = Column(Boolean, default=False)
+
+    # Professional Email
+    email_provider = Column(String(100), nullable=True)  # Google Workspace, Microsoft 365, etc.
+    email_domain = Column(String(255), nullable=True)  # yourcompany.com
+    email_admin = Column(String(255), nullable=True)  # admin@yourcompany.com
+
+    # Website
+    website_url = Column(String(500), nullable=True)
+    website_platform = Column(String(100), nullable=True)  # Webflow, WordPress, etc.
+    website_hosting = Column(String(100), nullable=True)  # Vercel, Netlify, AWS, etc.
+    ssl_enabled = Column(Boolean, default=False)
+
+    # Social Media
+    linkedin_url = Column(String(500), nullable=True)
+    twitter_url = Column(String(500), nullable=True)
+    instagram_url = Column(String(500), nullable=True)
+    facebook_url = Column(String(500), nullable=True)
+    youtube_url = Column(String(500), nullable=True)
+    github_url = Column(String(500), nullable=True)
+    tiktok_url = Column(String(500), nullable=True)
+
+    # Google Business
+    google_business_url = Column(String(500), nullable=True)
+    google_business_verified = Column(Boolean, default=False)
+
+    # Additional notes
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BankAccountType(str, enum.Enum):
+    CHECKING = "checking"
+    SAVINGS = "savings"
+    MONEY_MARKET = "money_market"
+    CD = "cd"
+    BUSINESS = "business"
+    OTHER = "other"
+
+
+class BankAccount(Base):
+    """Bank and financial accounts"""
+    __tablename__ = "bank_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_type = Column(String(50), nullable=False)  # checking, savings, coinbase, paypal, stripe, etc.
+    institution_name = Column(String(255), nullable=False)
+    account_name = Column(String(255), nullable=True)  # Nickname for the account
+    account_number_last4 = Column(String(4), nullable=True)  # Last 4 digits only
+    routing_number = Column(String(9), nullable=True)  # For bank accounts
+    account_holder = Column(String(255), nullable=True)
+    is_primary = Column(Boolean, default=False)
+    url = Column(String(500), nullable=True)
+    icon = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class MetricType(str, enum.Enum):

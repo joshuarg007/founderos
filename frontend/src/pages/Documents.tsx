@@ -10,7 +10,8 @@ import {
   CloudUpload,
   Loader2,
   AlertTriangle,
-  Upload
+  Upload,
+  Lock
 } from 'lucide-react';
 import { getDocuments, createDocument, updateDocument, deleteDocument, type Document } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -44,7 +45,8 @@ export default function Documents() {
     external_url: '',
     description: '',
     expiration_date: '',
-    tags: ''
+    tags: '',
+    is_sensitive: false
   });
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -162,7 +164,7 @@ export default function Documents() {
     setShowModal(false);
     setEditingDocument(null);
     setModalFile(null);
-    setFormData({ name: '', category: 'other', external_url: '', description: '', expiration_date: '', tags: '' });
+    setFormData({ name: '', category: 'other', external_url: '', description: '', expiration_date: '', tags: '', is_sensitive: false });
     loadDocuments();
   };
 
@@ -174,7 +176,8 @@ export default function Documents() {
       external_url: doc.external_url || '',
       description: doc.description || '',
       expiration_date: doc.expiration_date ? doc.expiration_date.split('T')[0] : '',
-      tags: doc.tags || ''
+      tags: doc.tags || '',
+      is_sensitive: doc.is_sensitive || false
     });
     setShowModal(true);
   };
@@ -206,7 +209,7 @@ export default function Documents() {
         </div>
         {canEdit && (
           <button
-            onClick={() => { setEditingDocument(null); setModalFile(null); setFormData({ name: '', category: 'other', external_url: '', description: '', expiration_date: '', tags: '' }); setShowModal(true); }}
+            onClick={() => { setEditingDocument(null); setModalFile(null); setFormData({ name: '', category: 'other', external_url: '', description: '', expiration_date: '', tags: '', is_sensitive: false }); setShowModal(true); }}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
           >
             <Plus className="w-4 h-4" />
@@ -324,7 +327,7 @@ export default function Documents() {
                         className="text-xs text-gray-400 bg-transparent border-none p-0 cursor-pointer hover:text-white focus:outline-none capitalize"
                       >
                         {categories.slice(1).map((cat) => (
-                          <option key={cat.value} value={cat.value} className="bg-[#1a1d24]">{cat.label}</option>
+                          <option key={cat.value} value={cat.value} className="bg-[#1a1d24] text-white">{cat.label}</option>
                         ))}
                       </select>
                     ) : (
@@ -433,10 +436,24 @@ export default function Documents() {
                   <button
                     onClick={async () => {
                       try {
+                        // If sensitive, prompt for password
+                        let password: string | null = null;
+                        if (doc.is_sensitive) {
+                          password = prompt('This is a sensitive document. Enter your password to download:');
+                          if (!password) return;
+                        }
+
+                        const headers: Record<string, string> = {
+                          'Accept': 'application/octet-stream, application/json'
+                        };
+                        if (password) {
+                          headers['X-Verify-Password'] = password;
+                        }
+
                         const response = await fetch(`${API_BASE}/documents/${doc.id}/download`, {
                           method: 'GET',
                           credentials: 'include',
-                          headers: { 'Accept': 'application/octet-stream, application/json' }
+                          headers
                         });
 
                         if (!response.ok) {
@@ -464,8 +481,13 @@ export default function Documents() {
                         alert(`Download failed: ${msg}`);
                       }
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-white text-xs hover:bg-white/20 transition"
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition ${
+                      doc.is_sensitive
+                        ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
+                        : 'bg-white/10 text-white hover:bg-white/20'
+                    }`}
                   >
+                    {doc.is_sensitive && <Lock className="w-3 h-3" />}
                     <Download className="w-3 h-3" />
                     Download
                   </button>
@@ -507,7 +529,7 @@ export default function Documents() {
                   className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                 >
                   {categories.slice(1).map((cat) => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                    <option key={cat.value} value={cat.value} className="bg-[#1a1d24] text-white">{cat.label}</option>
                   ))}
                 </select>
               </div>
@@ -606,6 +628,19 @@ export default function Documents() {
                   placeholder="e.g., important, 2024, renewal"
                   className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                 />
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <input
+                  type="checkbox"
+                  id="is_sensitive"
+                  checked={formData.is_sensitive}
+                  onChange={(e) => setFormData({ ...formData, is_sensitive: e.target.checked })}
+                  className="w-4 h-4 rounded bg-white/5 border-white/20"
+                />
+                <label htmlFor="is_sensitive" className="flex items-center gap-2 text-sm text-amber-300 cursor-pointer">
+                  <Lock className="w-4 h-4" />
+                  Require password to download (sensitive document)
+                </label>
               </div>
               <div className="flex justify-end gap-3 pt-4">
                 <button

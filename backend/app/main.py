@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import re
@@ -10,12 +10,14 @@ from typing import List
 import os
 import shutil
 import logging
+import json
 
 from .database import engine, get_db, Base
 from .models import (
     Service, Document, Contact, Deadline, BusinessInfo, BusinessIdentifier,
     ChecklistProgress, User, VaultConfig, Credential, ProductOffered, ProductUsed, WebLink,
-    TaskBoard, TaskColumn, Task, TaskComment, TimeEntry, TaskActivity, Metric
+    TaskBoard, TaskColumn, Task, TaskComment, TimeEntry, TaskActivity, Metric,
+    WebPresence, BankAccount
 )
 from .auth import router as auth_router, get_current_user
 from .schemas import (
@@ -28,7 +30,7 @@ from .schemas import (
     BusinessIdentifierCreate, BusinessIdentifierUpdate, BusinessIdentifierResponse, BusinessIdentifierMasked,
     ChecklistProgressCreate, ChecklistProgressUpdate, ChecklistProgressResponse,
     VaultSetup, VaultUnlock, VaultStatus,
-    CredentialCreate, CredentialUpdate, CredentialMasked, CredentialDecrypted,
+    CredentialCreate, CredentialUpdate, CredentialMasked, CredentialDecrypted, CustomField,
     ProductOfferedCreate, ProductOfferedUpdate, ProductOfferedResponse,
     ProductUsedCreate, ProductUsedUpdate, ProductUsedResponse,
     WebLinkCreate, WebLinkUpdate, WebLinkResponse,
@@ -38,7 +40,9 @@ from .schemas import (
     TaskCommentCreate, TaskCommentUpdate, TaskCommentResponse,
     TimeEntryCreate, TimeEntryUpdate, TimeEntryResponse, TimerStart,
     TaskActivityResponse, UserBrief,
-    MetricCreate, MetricUpdate, MetricResponse, MetricSummary
+    MetricCreate, MetricUpdate, MetricResponse, MetricSummary,
+    WebPresenceCreate, WebPresenceUpdate, WebPresenceResponse,
+    BankAccountCreate, BankAccountUpdate, BankAccountResponse
 )
 from .vault import (
     generate_salt, derive_key, hash_master_password, verify_master_password,
@@ -51,6 +55,7 @@ from .security_middleware import (
     AuditLogMiddleware,
     RequestValidationMiddleware
 )
+from .security import verify_password
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -358,7 +363,8 @@ async def upload_document(
 async def download_document(
     document_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    x_verify_password: str = Header(None)
 ):
     """
     Secure file download endpoint.
@@ -369,6 +375,7 @@ async def download_document(
     - Path traversal protection
     - File existence validation
     - Audit logging
+    - Password verification for sensitive documents
     """
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -376,6 +383,14 @@ async def download_document(
 
     if not document.file_path:
         raise HTTPException(status_code=404, detail="No file attached to this document")
+
+    # Check if document is sensitive and requires password
+    if document.is_sensitive:
+        if not x_verify_password:
+            raise HTTPException(status_code=401, detail="Password required for sensitive documents")
+        if not verify_password(x_verify_password, current_user.password_hash):
+            logger.warning(f"Invalid password attempt for sensitive document {document_id} by {current_user.email}")
+            raise HTTPException(status_code=401, detail="Invalid password")
 
     # Extract just the filename (handle legacy paths that might have /uploads/ prefix)
     storage_name = document.file_path
@@ -1306,8 +1321,15 @@ def require_vault_unlocked():
 def get_credentials(db: Session = Depends(get_db)):
     """Get all credentials (masked - doesn't require unlock)."""
     credentials = db.query(Credential).order_by(Credential.name).all()
-    return [
-        CredentialMasked(
+    result = []
+    for c in credentials:
+        # Count custom fields if present
+        custom_field_count = 0
+        if c.encrypted_custom_fields:
+            # We can't decrypt here, but we can store the count unencrypted for display
+            # For now, we'll just indicate presence (count requires decrypt)
+            custom_field_count = 0  # Will be counted when unlocked
+        result.append(CredentialMasked(
             id=c.id,
             name=c.name,
             service_url=c.service_url,
@@ -1318,11 +1340,13 @@ def get_credentials(db: Session = Depends(get_db)):
             has_password=bool(c.encrypted_password),
             has_notes=bool(c.encrypted_notes),
             has_totp=bool(c.encrypted_totp_secret),
+            has_purpose=bool(c.encrypted_purpose),
+            has_custom_fields=bool(c.encrypted_custom_fields),
+            custom_field_count=custom_field_count,
             created_at=c.created_at,
             updated_at=c.updated_at
-        )
-        for c in credentials
-    ]
+        ))
+    return result
 
 
 @app.get("/api/credentials/{credential_id}", response_model=CredentialDecrypted)
@@ -1331,6 +1355,16 @@ def get_credential(credential_id: int, key: bytes = Depends(require_vault_unlock
     credential = db.query(Credential).filter(Credential.id == credential_id).first()
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
+
+    # Decrypt custom fields if present
+    custom_fields = None
+    if credential.encrypted_custom_fields:
+        try:
+            decrypted_json = decrypt_value(credential.encrypted_custom_fields, key)
+            custom_fields_data = json.loads(decrypted_json)
+            custom_fields = [CustomField(**cf) for cf in custom_fields_data]
+        except Exception:
+            custom_fields = None
 
     return CredentialDecrypted(
         id=credential.id,
@@ -1343,6 +1377,8 @@ def get_credential(credential_id: int, key: bytes = Depends(require_vault_unlock
         password=decrypt_value(credential.encrypted_password, key) if credential.encrypted_password else None,
         notes=decrypt_value(credential.encrypted_notes, key) if credential.encrypted_notes else None,
         totp_secret=decrypt_value(credential.encrypted_totp_secret, key) if credential.encrypted_totp_secret else None,
+        purpose=decrypt_value(credential.encrypted_purpose, key) if credential.encrypted_purpose else None,
+        custom_fields=custom_fields,
         created_at=credential.created_at,
         updated_at=credential.updated_at
     )
@@ -1351,6 +1387,12 @@ def get_credential(credential_id: int, key: bytes = Depends(require_vault_unlock
 @app.post("/api/credentials", response_model=CredentialMasked)
 def create_credential(credential: CredentialCreate, key: bytes = Depends(require_vault_unlocked), db: Session = Depends(get_db)):
     """Create a new credential (requires unlock)."""
+    # Encrypt custom fields if present
+    encrypted_custom_fields = None
+    if credential.custom_fields:
+        custom_fields_json = json.dumps([cf.model_dump() for cf in credential.custom_fields])
+        encrypted_custom_fields = encrypt_value(custom_fields_json, key)
+
     db_credential = Credential(
         name=credential.name,
         service_url=credential.service_url,
@@ -1360,7 +1402,9 @@ def create_credential(credential: CredentialCreate, key: bytes = Depends(require
         encrypted_username=encrypt_value(credential.username, key) if credential.username else None,
         encrypted_password=encrypt_value(credential.password, key) if credential.password else None,
         encrypted_notes=encrypt_value(credential.notes, key) if credential.notes else None,
-        encrypted_totp_secret=encrypt_value(credential.totp_secret, key) if credential.totp_secret else None
+        encrypted_totp_secret=encrypt_value(credential.totp_secret, key) if credential.totp_secret else None,
+        encrypted_purpose=encrypt_value(credential.purpose, key) if credential.purpose else None,
+        encrypted_custom_fields=encrypted_custom_fields
     )
     db.add(db_credential)
     db.commit()
@@ -1377,6 +1421,9 @@ def create_credential(credential: CredentialCreate, key: bytes = Depends(require
         has_password=bool(db_credential.encrypted_password),
         has_notes=bool(db_credential.encrypted_notes),
         has_totp=bool(db_credential.encrypted_totp_secret),
+        has_purpose=bool(db_credential.encrypted_purpose),
+        has_custom_fields=bool(db_credential.encrypted_custom_fields),
+        custom_field_count=len(credential.custom_fields) if credential.custom_fields else 0,
         created_at=db_credential.created_at,
         updated_at=db_credential.updated_at
     )
@@ -1405,9 +1452,22 @@ def update_credential(credential_id: int, credential: CredentialUpdate, key: byt
         db_credential.encrypted_notes = encrypt_value(update_data['notes'], key) if update_data['notes'] else None
     if 'totp_secret' in update_data:
         db_credential.encrypted_totp_secret = encrypt_value(update_data['totp_secret'], key) if update_data['totp_secret'] else None
+    if 'purpose' in update_data:
+        db_credential.encrypted_purpose = encrypt_value(update_data['purpose'], key) if update_data['purpose'] else None
+    if 'custom_fields' in update_data:
+        if update_data['custom_fields']:
+            custom_fields_json = json.dumps([cf.model_dump() for cf in update_data['custom_fields']])
+            db_credential.encrypted_custom_fields = encrypt_value(custom_fields_json, key)
+        else:
+            db_credential.encrypted_custom_fields = None
 
     db.commit()
     db.refresh(db_credential)
+
+    # Count custom fields for response
+    custom_field_count = 0
+    if credential.custom_fields is not None:
+        custom_field_count = len(credential.custom_fields)
 
     return CredentialMasked(
         id=db_credential.id,
@@ -1420,6 +1480,9 @@ def update_credential(credential_id: int, credential: CredentialUpdate, key: byt
         has_password=bool(db_credential.encrypted_password),
         has_notes=bool(db_credential.encrypted_notes),
         has_totp=bool(db_credential.encrypted_totp_secret),
+        has_purpose=bool(db_credential.encrypted_purpose),
+        has_custom_fields=bool(db_credential.encrypted_custom_fields),
+        custom_field_count=custom_field_count,
         created_at=db_credential.created_at,
         updated_at=db_credential.updated_at
     )
@@ -1437,14 +1500,33 @@ def delete_credential(credential_id: int, key: bytes = Depends(require_vault_unl
 
 
 @app.get("/api/credentials/{credential_id}/copy/{field}")
-def copy_credential_field(credential_id: int, field: str, key: bytes = Depends(require_vault_unlocked), db: Session = Depends(get_db)):
-    """Get a single decrypted field for copying (requires unlock)."""
-    if field not in ['username', 'password', 'notes', 'totp_secret']:
+def copy_credential_field(credential_id: int, field: str, index: int = None, key: bytes = Depends(require_vault_unlocked), db: Session = Depends(get_db)):
+    """Get a single decrypted field for copying (requires unlock).
+
+    For custom fields, use field='custom' and provide index query param.
+    """
+    valid_fields = ['username', 'password', 'notes', 'totp_secret', 'purpose', 'custom']
+    if field not in valid_fields:
         raise HTTPException(status_code=400, detail="Invalid field")
 
     credential = db.query(Credential).filter(Credential.id == credential_id).first()
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
+
+    # Handle custom field
+    if field == 'custom':
+        if index is None:
+            raise HTTPException(status_code=400, detail="Index required for custom fields")
+        if not credential.encrypted_custom_fields:
+            return {"value": None}
+        try:
+            decrypted_json = decrypt_value(credential.encrypted_custom_fields, key)
+            custom_fields = json.loads(decrypted_json)
+            if index < 0 or index >= len(custom_fields):
+                raise HTTPException(status_code=400, detail="Invalid custom field index")
+            return {"value": custom_fields[index].get('value')}
+        except (json.JSONDecodeError, IndexError):
+            return {"value": None}
 
     encrypted_field = f"encrypted_{field}"
     encrypted_value = getattr(credential, encrypted_field)
@@ -2532,3 +2614,118 @@ def get_metric_chart_data(
             for m in metrics
         ]
     }
+
+
+# ============ WEB PRESENCE ROUTES ============
+
+@app.get("/api/web-presence", response_model=WebPresenceResponse)
+def get_web_presence(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get web presence info (singleton - creates if not exists)."""
+    presence = db.query(WebPresence).first()
+    if not presence:
+        presence = WebPresence()
+        db.add(presence)
+        db.commit()
+        db.refresh(presence)
+    return presence
+
+
+@app.patch("/api/web-presence", response_model=WebPresenceResponse)
+def update_web_presence(
+    data: WebPresenceUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update web presence info."""
+    presence = db.query(WebPresence).first()
+    if not presence:
+        presence = WebPresence()
+        db.add(presence)
+        db.commit()
+        db.refresh(presence)
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(presence, key, value)
+
+    db.commit()
+    db.refresh(presence)
+    return presence
+
+
+# ============ BANK ACCOUNT ROUTES ============
+
+@app.get("/api/bank-accounts", response_model=List[BankAccountResponse])
+def get_bank_accounts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all bank accounts."""
+    return db.query(BankAccount).order_by(BankAccount.is_primary.desc(), BankAccount.institution_name).all()
+
+
+@app.post("/api/bank-accounts", response_model=BankAccountResponse)
+def create_bank_account(
+    data: BankAccountCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a bank account."""
+    account = BankAccount(**data.model_dump())
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+@app.get("/api/bank-accounts/{account_id}", response_model=BankAccountResponse)
+def get_bank_account(
+    account_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get a specific bank account."""
+    account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    return account
+
+
+@app.patch("/api/bank-accounts/{account_id}", response_model=BankAccountResponse)
+def update_bank_account(
+    account_id: int,
+    data: BankAccountUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a bank account."""
+    account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(account, key, value)
+
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+@app.delete("/api/bank-accounts/{account_id}")
+def delete_bank_account(
+    account_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a bank account."""
+    account = db.query(BankAccount).filter(BankAccount.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    db.delete(account)
+    db.commit()
+    return {"message": "Bank account deleted"}

@@ -458,7 +458,7 @@ export default function Metrics() {
                     className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500"
                   >
                     {Object.entries(METRIC_TYPES).map(([type, info]) => (
-                      <option key={type} value={type}>
+                      <option key={type} value={type} className="bg-[#1a1d24] text-white">
                         {info.label} - {info.description}
                       </option>
                     ))}

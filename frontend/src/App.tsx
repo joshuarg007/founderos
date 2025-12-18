@@ -18,6 +18,7 @@ import WebLinks from './pages/WebLinks'
 import Users from './pages/Users'
 import Tasks from './pages/Tasks'
 import Metrics from './pages/Metrics'
+import Banking from './pages/Banking'
 
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
         <Route path="web-links" element={<WebLinks />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="metrics" element={<Metrics />} />
+        <Route path="banking" element={<Banking />} />
         <Route path="users" element={<Users />} />
       </Route>
     </Routes>

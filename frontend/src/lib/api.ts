@@ -71,6 +71,7 @@ export interface Document {
   description: string | null;
   expiration_date: string | null;
   tags: string | null;
+  is_sensitive: boolean;
   created_at: string;
   updated_at: string;
   file_exists?: boolean;
@@ -236,6 +237,13 @@ export interface VaultStatus {
   is_unlocked: boolean;
 }
 
+export interface CustomField {
+  name: string;
+  value: string;
+  type: 'text' | 'secret' | 'url' | 'date' | 'dropdown';
+  options?: string[];
+}
+
 export interface CredentialMasked {
   id: number;
   name: string;
@@ -247,6 +255,9 @@ export interface CredentialMasked {
   has_password: boolean;
   has_notes: boolean;
   has_totp: boolean;
+  has_purpose: boolean;
+  has_custom_fields: boolean;
+  custom_field_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -262,6 +273,8 @@ export interface CredentialDecrypted {
   password: string | null;
   notes: string | null;
   totp_secret: string | null;
+  purpose: string | null;
+  custom_fields: CustomField[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -276,6 +289,8 @@ export interface CredentialCreate {
   password?: string | null;
   notes?: string | null;
   totp_secret?: string | null;
+  purpose?: string | null;
+  custom_fields?: CustomField[] | null;
 }
 
 export const getVaultStatus = () => fetchApi<VaultStatus>('/vault/status');
@@ -461,6 +476,7 @@ export interface TaskColumn {
   position: number;
   color: string | null;
   wip_limit: number | null;
+  tasks: Task[];
   created_at: string;
   updated_at: string;
 }
@@ -766,3 +782,74 @@ export const getMetricsSummary = () =>
 
 export const getMetricChartData = (metricType: string, months?: number) =>
   fetchApi<MetricChartData>(`/metrics/chart/${metricType}${months ? `?months=${months}` : ''}`);
+
+
+// Web Presence
+export interface WebPresence {
+  id: number;
+  // Domain
+  domain_name: string | null;
+  domain_registrar: string | null;
+  domain_expiration: string | null;
+  domain_privacy: boolean;
+  domain_auto_renew: boolean;
+  // Email
+  email_provider: string | null;
+  email_domain: string | null;
+  email_admin: string | null;
+  // Website
+  website_url: string | null;
+  website_platform: string | null;
+  website_hosting: string | null;
+  ssl_enabled: boolean;
+  // Social Media
+  linkedin_url: string | null;
+  twitter_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  youtube_url: string | null;
+  github_url: string | null;
+  tiktok_url: string | null;
+  // Google Business
+  google_business_url: string | null;
+  google_business_verified: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getWebPresence = () =>
+  fetchApi<WebPresence>('/web-presence');
+
+export const updateWebPresence = (data: Partial<WebPresence>) =>
+  fetchApi<WebPresence>('/web-presence', { method: 'PATCH', body: JSON.stringify(data) });
+
+
+// Bank Accounts
+export interface BankAccount {
+  id: number;
+  account_type: string;
+  institution_name: string;
+  account_name: string | null;
+  account_number_last4: string | null;
+  routing_number: string | null;
+  account_holder: string | null;
+  is_primary: boolean;
+  url: string | null;
+  icon: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getBankAccounts = () =>
+  fetchApi<BankAccount[]>('/bank-accounts');
+
+export const createBankAccount = (data: Partial<BankAccount>) =>
+  fetchApi<BankAccount>('/bank-accounts', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateBankAccount = (id: number, data: Partial<BankAccount>) =>
+  fetchApi<BankAccount>(`/bank-accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteBankAccount = (id: number) =>
+  fetchApi<{ ok: boolean }>(`/bank-accounts/${id}`, { method: 'DELETE' });

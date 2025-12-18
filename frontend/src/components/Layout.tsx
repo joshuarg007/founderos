@@ -18,6 +18,7 @@ import {
   UserCog,
   CheckSquare,
   BarChart3,
+  Landmark,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -36,6 +37,7 @@ const navItems = [
   { to: '/contacts', icon: Users, label: 'Contacts' },
   { to: '/deadlines', icon: Calendar, label: 'Deadlines' },
   { to: '/vault', icon: Shield, label: 'Credential Vault' },
+  { to: '/banking', icon: Landmark, label: 'Banking' },
 ];
 
 export default function Layout() {

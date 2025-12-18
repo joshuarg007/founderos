@@ -211,6 +211,23 @@ export default function Tasks() {
   };
 
   const handleCompleteTask = async (taskId: number) => {
+    // Find the task to get its title for confirmation
+    let taskTitle = 'this task';
+    if (currentBoard) {
+      for (const column of currentBoard.columns) {
+        const task = column.tasks.find(t => t.id === taskId);
+        if (task) {
+          taskTitle = task.title;
+          break;
+        }
+      }
+    }
+
+    // Confirm before completing
+    if (!window.confirm(`Mark "${taskTitle}" as complete?`)) {
+      return;
+    }
+
     try {
       await completeTask(taskId);
       loadTasks();
@@ -352,7 +369,7 @@ export default function Tasks() {
               className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
             >
               {boards.map(board => (
-                <option key={board.id} value={board.id}>{board.name}</option>
+                <option key={board.id} value={board.id} className="bg-[#1a1d24] text-white">{board.name}</option>
               ))}
             </select>
           )}
@@ -375,11 +392,11 @@ export default function Tasks() {
             onChange={(e) => setFilterPriority(e.target.value || null)}
             className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
           >
-            <option value="">All Priorities</option>
-            <option value="urgent">Urgent</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+            <option value="" className="bg-[#1a1d24] text-white">All Priorities</option>
+            <option value="urgent" className="bg-[#1a1d24] text-white">Urgent</option>
+            <option value="high" className="bg-[#1a1d24] text-white">High</option>
+            <option value="medium" className="bg-[#1a1d24] text-white">Medium</option>
+            <option value="low" className="bg-[#1a1d24] text-white">Low</option>
           </select>
 
           {/* Assignee filter */}
@@ -388,9 +405,9 @@ export default function Tasks() {
             onChange={(e) => setFilterAssignee(e.target.value ? parseInt(e.target.value) : null)}
             className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
           >
-            <option value="">All Assignees</option>
+            <option value="" className="bg-[#1a1d24] text-white">All Assignees</option>
             {users.map(u => (
-              <option key={u.id} value={u.id}>{u.name || u.email}</option>
+              <option key={u.id} value={u.id} className="bg-[#1a1d24] text-white">{u.name || u.email}</option>
             ))}
           </select>
 
@@ -486,10 +503,10 @@ export default function Tasks() {
                     onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
+                    <option value="low" className="bg-[#1a1d24] text-white">Low</option>
+                    <option value="medium" className="bg-[#1a1d24] text-white">Medium</option>
+                    <option value="high" className="bg-[#1a1d24] text-white">High</option>
+                    <option value="urgent" className="bg-[#1a1d24] text-white">Urgent</option>
                   </select>
                 </div>
                 <div>
@@ -510,9 +527,9 @@ export default function Tasks() {
                     onChange={(e) => setTaskForm({ ...taskForm, assigned_to_id: e.target.value ? parseInt(e.target.value) : null })}
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                   >
-                    <option value="">Unassigned</option>
+                    <option value="" className="bg-[#1a1d24] text-white">Unassigned</option>
                     {users.map(u => (
-                      <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                      <option key={u.id} value={u.id} className="bg-[#1a1d24] text-white">{u.name || u.email}</option>
                     ))}
                   </select>
                 </div>
@@ -526,7 +543,7 @@ export default function Tasks() {
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
                   >
                     {currentBoard.columns.map(col => (
-                      <option key={col.id} value={col.id}>{col.name}</option>
+                      <option key={col.id} value={col.id} className="bg-[#1a1d24] text-white">{col.name}</option>
                     ))}
                   </select>
                 </div>
@@ -937,9 +954,9 @@ function TaskDetailPanel({
                 onChange={(e) => onAssign(task.id, e.target.value ? parseInt(e.target.value) : null)}
                 className="w-full px-2 py-1 text-sm rounded bg-white/5 border border-white/10 text-white"
               >
-                <option value="">Unassigned</option>
+                <option value="" className="bg-[#1a1d24] text-white">Unassigned</option>
                 {users.map(u => (
-                  <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                  <option key={u.id} value={u.id} className="bg-[#1a1d24] text-white">{u.name || u.email}</option>
                 ))}
               </select>
             ) : (

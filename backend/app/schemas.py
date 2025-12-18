@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 
 
@@ -50,6 +50,7 @@ class DocumentBase(BaseModel):
     description: Optional[str] = None
     expiration_date: Optional[datetime] = None
     tags: Optional[str] = None
+    is_sensitive: bool = False
 
 
 class DocumentCreate(DocumentBase):
@@ -64,6 +65,7 @@ class DocumentUpdate(BaseModel):
     description: Optional[str] = None
     expiration_date: Optional[datetime] = None
     tags: Optional[str] = None
+    is_sensitive: Optional[bool] = None
 
 
 class DocumentResponse(DocumentBase):
@@ -366,6 +368,14 @@ class VaultStatus(BaseModel):
     is_unlocked: bool
 
 
+class CustomField(BaseModel):
+    """Custom field for credential metadata"""
+    name: str
+    value: str
+    type: Literal["text", "secret", "url", "date", "dropdown"] = "text"
+    options: Optional[List[str]] = None  # For dropdown type
+
+
 class CredentialBase(BaseModel):
     name: str
     service_url: Optional[str] = None
@@ -379,6 +389,8 @@ class CredentialCreate(CredentialBase):
     password: Optional[str] = None
     notes: Optional[str] = None
     totp_secret: Optional[str] = None
+    purpose: Optional[str] = None
+    custom_fields: Optional[List[CustomField]] = None
 
 
 class CredentialUpdate(BaseModel):
@@ -390,6 +402,8 @@ class CredentialUpdate(BaseModel):
     password: Optional[str] = None
     notes: Optional[str] = None
     totp_secret: Optional[str] = None
+    purpose: Optional[str] = None
+    custom_fields: Optional[List[CustomField]] = None
     related_service_id: Optional[int] = None
 
 
@@ -400,6 +414,9 @@ class CredentialMasked(CredentialBase):
     has_password: bool
     has_notes: bool
     has_totp: bool
+    has_purpose: bool
+    has_custom_fields: bool
+    custom_field_count: int
     created_at: datetime
     updated_at: datetime
 
@@ -414,6 +431,8 @@ class CredentialDecrypted(CredentialBase):
     password: Optional[str] = None
     notes: Optional[str] = None
     totp_secret: Optional[str] = None
+    purpose: Optional[str] = None
+    custom_fields: Optional[List[CustomField]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -807,3 +826,98 @@ class MetricSummary(BaseModel):
     change_percent: Optional[float] = None
     unit: Optional[str] = None
     trend: Optional[str] = None  # up, down, flat
+
+
+# ============ Web Presence Schemas ============
+
+class WebPresenceBase(BaseModel):
+    # Domain
+    domain_name: Optional[str] = None
+    domain_registrar: Optional[str] = None
+    domain_expiration: Optional[datetime] = None
+    domain_privacy: bool = False
+    domain_auto_renew: bool = False
+
+    # Professional Email
+    email_provider: Optional[str] = None
+    email_domain: Optional[str] = None
+    email_admin: Optional[str] = None
+
+    # Website
+    website_url: Optional[str] = None
+    website_platform: Optional[str] = None
+    website_hosting: Optional[str] = None
+    ssl_enabled: bool = False
+
+    # Social Media
+    linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    facebook_url: Optional[str] = None
+    youtube_url: Optional[str] = None
+    github_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+
+    # Google Business
+    google_business_url: Optional[str] = None
+    google_business_verified: bool = False
+
+    notes: Optional[str] = None
+
+
+class WebPresenceCreate(WebPresenceBase):
+    pass
+
+
+class WebPresenceUpdate(WebPresenceBase):
+    pass
+
+
+class WebPresenceResponse(WebPresenceBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ============ Bank Account Schemas ============
+
+class BankAccountBase(BaseModel):
+    account_type: str  # checking, savings, coinbase, paypal, stripe, etc.
+    institution_name: str
+    account_name: Optional[str] = None
+    account_number_last4: Optional[str] = None
+    routing_number: Optional[str] = None
+    account_holder: Optional[str] = None
+    is_primary: bool = False
+    url: Optional[str] = None
+    icon: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BankAccountCreate(BankAccountBase):
+    pass
+
+
+class BankAccountUpdate(BaseModel):
+    account_type: Optional[str] = None
+    institution_name: Optional[str] = None
+    account_name: Optional[str] = None
+    account_number_last4: Optional[str] = None
+    routing_number: Optional[str] = None
+    account_holder: Optional[str] = None
+    is_primary: Optional[bool] = None
+    url: Optional[str] = None
+    icon: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BankAccountResponse(BankAccountBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

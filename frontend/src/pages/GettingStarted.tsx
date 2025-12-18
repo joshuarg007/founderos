@@ -1587,9 +1587,9 @@ export default function GettingStarted() {
                             onChange={(e) => setModalDataFields(prev => ({ ...prev, [field.key]: e.target.value }))}
                             className="w-full px-2 py-1.5 bg-[#0f1117] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-emerald-500/50"
                           >
-                            <option value="">Select...</option>
+                            <option value="" className="bg-[#1a1d24] text-white">Select...</option>
                             {field.options?.map(opt => (
-                              <option key={opt} value={opt}>{opt}</option>
+                              <option key={opt} value={opt} className="bg-[#1a1d24] text-white">{opt}</option>
                             ))}
                           </select>
                         ) : (
