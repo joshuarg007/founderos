@@ -2394,19 +2394,19 @@ def stop_timer(
     return db_entry
 
 
-@app.get("/api/time-entries/running", response_model=TimeEntryResponse)
+@app.get("/api/time-entries/running")
 def get_running_timer(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get the current user's running timer if any."""
+    """Get the current user's running timer if any. Returns null if none."""
     entry = db.query(TimeEntry).filter(
         TimeEntry.user_id == current_user.id,
         TimeEntry.is_running == True
     ).first()
     if not entry:
-        raise HTTPException(status_code=404, detail="No running timer")
-    return entry
+        return None
+    return TimeEntryResponse.model_validate(entry)
 
 
 @app.delete("/api/time-entries/{entry_id}")
