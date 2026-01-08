@@ -489,16 +489,19 @@ export default function Metrics() {
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                     )}
                     <input
-                      type="text"
-                      inputMode="decimal"
+                      type="number"
+                      inputMode="numeric"
                       value={formData.value}
-                      onChange={(e) => {
-                        // Only allow numbers, decimal point, and comma
-                        const sanitized = e.target.value.replace(/[^0-9.,\-]/g, '');
-                        setFormData({ ...formData, value: sanitized });
+                      onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        // Block non-numeric keys except backspace, delete, arrows, tab
+                        if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                          e.preventDefault();
+                        }
                       }}
-                      className={`w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500 ${formData.unit === '$' ? 'pl-7' : ''}`}
+                      className={`w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500 ${formData.unit === '$' ? 'pl-7' : ''} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                       placeholder="0"
+                      min="0"
                       required
                     />
                     {formData.unit === '%' && (
