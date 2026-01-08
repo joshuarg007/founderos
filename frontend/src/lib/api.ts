@@ -1,6 +1,40 @@
 // FounderOS API Client
 const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api`;
 
+// User-friendly error messages
+const ERROR_MESSAGES: Record<number, string> = {
+  400: "Something went wrong with your request. Please check your input and try again.",
+  401: "Your session has expired. Please log in again.",
+  403: "You don't have permission to perform this action.",
+  404: "The requested item could not be found.",
+  409: "This action conflicts with existing data. Please refresh and try again.",
+  422: "Some of the information provided is invalid. Please check and try again.",
+  429: "Too many requests. Please wait a moment and try again.",
+  500: "We're experiencing technical difficulties. Please try again later.",
+  502: "Server is temporarily unavailable. Please try again in a few moments.",
+  503: "Service is temporarily unavailable. Please try again later.",
+};
+
+export class ApiError extends Error {
+  status: number;
+  userMessage: string;
+
+  constructor(status: number, technicalMessage?: string) {
+    const userMessage = ERROR_MESSAGES[status] || "Something unexpected happened. Please try again.";
+    super(technicalMessage || userMessage);
+    this.status = status;
+    this.userMessage = userMessage;
+    this.name = 'ApiError';
+  }
+}
+
+// Global error event for UI notifications
+export const apiErrorEvent = new EventTarget();
+
+export function dispatchApiError(error: ApiError) {
+  apiErrorEvent.dispatchEvent(new CustomEvent('api-error', { detail: error }));
+}
+
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${endpoint}`, {
     credentials: 'include',
@@ -12,7 +46,16 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   });
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status}`);
+    let technicalMessage: string | undefined;
+    try {
+      const errorBody = await res.json();
+      technicalMessage = errorBody.detail || errorBody.message;
+    } catch {
+      // Ignore JSON parse errors
+    }
+    const error = new ApiError(res.status, technicalMessage);
+    dispatchApiError(error);
+    throw error;
   }
 
   return res.json();

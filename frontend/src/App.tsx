@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
+import GlobalErrorToast from './components/GlobalErrorToast'
 import DailyBrief from './pages/DailyBrief'
 import Dashboard from './pages/Dashboard'
 import GettingStarted from './pages/GettingStarted'
@@ -22,6 +23,8 @@ import Banking from './pages/Banking'
 
 function App() {
   return (
+    <>
+    <GlobalErrorToast />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route
@@ -51,6 +54,7 @@ function App() {
         <Route path="users" element={<Users />} />
       </Route>
     </Routes>
+    </>
   )
 }
 
