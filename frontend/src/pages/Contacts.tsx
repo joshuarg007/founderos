@@ -690,20 +690,28 @@ export default function Contacts() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingContact) {
-      await updateContact(editingContact.id, formData);
-    } else {
-      await createContact(formData);
+    try {
+      if (editingContact) {
+        await updateContact(editingContact.id, formData);
+      } else {
+        await createContact(formData);
+        // Reset filter to 'all' so user can see their new contact
+        setSelectedType('all');
+      }
+      setShowModal(false);
+      setEditingContact(null);
+      setFormData({ name: '', title: '', company: '', contact_type: 'other', email: '', phone: '', address: '', website: '', responsibilities: '', notes: '' });
+      setShowResponsibilitiesDropdown(false);
+      setResponsibilitySearch('');
+      setShowTitleDropdown(false);
+      setTitleSearch('');
+      setShowCustomTitle(false);
+      // Manually load contacts with no filter after creating
+      const data = await getContacts();
+      setContacts(data);
+    } catch {
+      // Error is already handled by GlobalErrorToast
     }
-    setShowModal(false);
-    setEditingContact(null);
-    setFormData({ name: '', title: '', company: '', contact_type: 'other', email: '', phone: '', address: '', website: '', responsibilities: '', notes: '' });
-    setShowResponsibilitiesDropdown(false);
-    setResponsibilitySearch('');
-    setShowTitleDropdown(false);
-    setTitleSearch('');
-    setShowCustomTitle(false);
-    loadContacts();
   };
 
   const handleEdit = (contact: Contact) => {
@@ -1067,7 +1075,7 @@ export default function Contacts() {
                   <div ref={responsibilitiesRef} className="relative">
                     {/* Selected tags */}
                     <div
-                      onClick={() => setShowResponsibilitiesDropdown(true)}
+                      onClick={() => setShowResponsibilitiesDropdown(!showResponsibilitiesDropdown)}
                       className="min-h-[42px] w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white cursor-pointer focus-within:border-cyan-500/50 flex flex-wrap gap-1.5 items-center"
                     >
                       {selectedResponsibilities.length > 0 ? (
@@ -1092,7 +1100,7 @@ export default function Contacts() {
                       ) : (
                         <span className="text-gray-500 text-sm">Select responsibilities...</span>
                       )}
-                      <ChevronDown className="w-4 h-4 text-gray-500 ml-auto" />
+                      <ChevronDown className={`w-4 h-4 text-gray-500 ml-auto transition-transform ${showResponsibilitiesDropdown ? 'rotate-180' : ''}`} />
                     </div>
 
                     {/* Dropdown */}
