@@ -2642,6 +2642,16 @@ def get_metric_chart_data(
 
 # ============ WEB PRESENCE ROUTES ============
 
+def safe_json_loads(value: str | None) -> list | None:
+    """Safely parse JSON, returning None on error."""
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(f"Failed to parse JSON: {value[:100] if value else 'None'}")
+        return None
+
 def serialize_web_presence(presence: WebPresence) -> dict:
     """Convert WebPresence model to dict with parsed JSON fields."""
     result = {
@@ -2654,12 +2664,12 @@ def serialize_web_presence(presence: WebPresence) -> dict:
         "email_provider": presence.email_provider,
         "email_domain": presence.email_domain,
         "email_admin": presence.email_admin,
-        "additional_emails": json.loads(presence.additional_emails) if presence.additional_emails else None,
+        "additional_emails": safe_json_loads(presence.additional_emails),
         "website_url": presence.website_url,
         "website_platform": presence.website_platform,
         "website_hosting": presence.website_hosting,
         "ssl_enabled": presence.ssl_enabled,
-        "additional_websites": json.loads(presence.additional_websites) if presence.additional_websites else None,
+        "additional_websites": safe_json_loads(presence.additional_websites),
         "linkedin_url": presence.linkedin_url,
         "twitter_url": presence.twitter_url,
         "instagram_url": presence.instagram_url,
@@ -2667,7 +2677,7 @@ def serialize_web_presence(presence: WebPresence) -> dict:
         "youtube_url": presence.youtube_url,
         "github_url": presence.github_url,
         "tiktok_url": presence.tiktok_url,
-        "additional_socials": json.loads(presence.additional_socials) if presence.additional_socials else None,
+        "additional_socials": safe_json_loads(presence.additional_socials),
         "google_business_url": presence.google_business_url,
         "google_business_verified": presence.google_business_verified,
         "apple_business_url": presence.apple_business_url,
@@ -2678,7 +2688,7 @@ def serialize_web_presence(presence: WebPresence) -> dict:
         "yelp_claimed": presence.yelp_claimed,
         "bbb_url": presence.bbb_url,
         "bbb_accredited": presence.bbb_accredited,
-        "additional_listings": json.loads(presence.additional_listings) if presence.additional_listings else None,
+        "additional_listings": safe_json_loads(presence.additional_listings),
         "notes": presence.notes,
         "created_at": presence.created_at,
         "updated_at": presence.updated_at,
@@ -2708,23 +2718,32 @@ def update_web_presence(
     db: Session = Depends(get_db)
 ):
     """Update web presence info."""
-    presence = db.query(WebPresence).first()
-    if not presence:
-        presence = WebPresence()
-        db.add(presence)
+    try:
+        presence = db.query(WebPresence).first()
+        if not presence:
+            presence = WebPresence()
+            db.add(presence)
+            db.commit()
+            db.refresh(presence)
+
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            # Serialize list fields to JSON
+            if key in ('additional_emails', 'additional_websites', 'additional_socials', 'additional_listings') and value is not None:
+                try:
+                    value = json.dumps([item.model_dump() if hasattr(item, 'model_dump') else item for item in value])
+                except (TypeError, AttributeError) as e:
+                    logger.warning(f"Failed to serialize {key}: {e}")
+                    value = json.dumps(value) if value else None
+            setattr(presence, key, value)
+
         db.commit()
         db.refresh(presence)
-
-    update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        # Serialize list fields to JSON
-        if key in ('additional_emails', 'additional_websites', 'additional_socials', 'additional_listings') and value is not None:
-            value = json.dumps([item.model_dump() if hasattr(item, 'model_dump') else item for item in value])
-        setattr(presence, key, value)
-
-    db.commit()
-    db.refresh(presence)
-    return serialize_web_presence(presence)
+        return serialize_web_presence(presence)
+    except Exception as e:
+        logger.error(f"Error updating web presence: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update web presence: {str(e)}")
 
 
 # ============ BANK ACCOUNT ROUTES ============

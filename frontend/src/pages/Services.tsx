@@ -64,15 +64,27 @@ export default function Services() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingService) {
-      await updateService(editingService.id, formData);
-    } else {
-      await createService(formData);
+
+    // Ensure URL has a protocol
+    let url = formData.url.trim();
+    if (url && !url.match(/^https?:\/\//i)) {
+      url = 'https://' + url;
     }
-    setShowModal(false);
-    setEditingService(null);
-    setFormData({ name: '', url: '', category: 'other', description: '', username_hint: '', notes: '', icon: '', is_favorite: false });
-    loadServices();
+    const dataToSubmit = { ...formData, url };
+
+    try {
+      if (editingService) {
+        await updateService(editingService.id, dataToSubmit);
+      } else {
+        await createService(dataToSubmit);
+      }
+      setShowModal(false);
+      setEditingService(null);
+      setFormData({ name: '', url: '', category: 'other', description: '', username_hint: '', notes: '', icon: '', is_favorite: false });
+      loadServices();
+    } catch {
+      // Error handled by GlobalErrorToast
+    }
   };
 
   const handleEdit = (service: Service) => {
@@ -111,6 +123,7 @@ export default function Services() {
           <p className="text-gray-400 mt-1">All your business services in one place</p>
         </div>
         <button
+          type="button"
           onClick={() => { setEditingService(null); setFormData({ name: '', url: '', category: 'other', description: '', username_hint: '', notes: '', icon: '', is_favorite: false }); setShowModal(true); }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
         >
