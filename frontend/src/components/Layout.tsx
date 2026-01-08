@@ -46,7 +46,7 @@ export default function Layout() {
   return (
     <div className="flex h-screen bg-[#0f1117]">
       {/* Sidebar */}
-      <aside className="w-64 bg-[#1a1d24] border-r border-white/10 flex flex-col">
+      <aside className="w-64 bg-[#1a1d24] border-r border-white/10 flex flex-col relative">
         {/* Logo */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
@@ -60,8 +60,8 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        {/* Navigation - with bottom padding for fixed footer */}
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto pb-32">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -97,10 +97,10 @@ export default function Layout() {
           )}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-white/10 space-y-3">
+        {/* Fixed Footer */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#1a1d24] border-t border-white/10 space-y-2">
           {user && (
-            <div className="space-y-3">
+            <>
               <div className="text-xs text-gray-400 truncate text-center">{user.email}</div>
               <button
                 onClick={logout}
@@ -110,7 +110,7 @@ export default function Layout() {
                 <LogOut className="w-5 h-5" />
                 Sign Out
               </button>
-            </div>
+            </>
           )}
           <div className="text-xs text-gray-500 text-center">
             FounderOS v1.0
