@@ -78,7 +78,7 @@ export default function ProductsUsed() {
     e.preventDefault();
     const submitData = {
       ...formData,
-      renewal_date: formData.renewal_date || null
+      renewal_date: formData.renewal_date ? new Date(formData.renewal_date).toISOString() : null
     };
     if (editingProduct) {
       await updateProductUsed(editingProduct.id, submitData);
