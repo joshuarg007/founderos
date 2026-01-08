@@ -5,7 +5,8 @@ import {
   Plus, Search, LayoutGrid, Clock, MessageSquare,
   CheckCircle2, Circle, AlertCircle, Calendar, User, X,
   Trash2, Edit3, Play, Square,
-  Send, Timer, History, Flag, CalendarDays, ChevronLeft, ChevronRight
+  Send, Timer, History, Flag, CalendarDays, ChevronLeft, ChevronRight,
+  ChevronDown, ChevronUp, Minimize2, Maximize2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -700,16 +701,73 @@ function TaskCard({
   onClick: () => void;
   onComplete: () => void;
 }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const isOverdue = task.due_date && isPast(new Date(task.due_date)) && task.status !== 'done';
   const isDueToday = task.due_date && isToday(new Date(task.due_date));
 
+  // Collapsed view - single strip
+  if (isCollapsed) {
+    return (
+      <div
+        className={`px-3 py-2 rounded-lg bg-[#1a1d24] border border-white/10 hover:border-white/20 cursor-pointer transition flex items-center gap-2 ${
+          task.status === 'done' ? 'opacity-60' : ''
+        }`}
+      >
+        {/* Complete button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onComplete();
+          }}
+          className="flex-shrink-0"
+        >
+          {task.status === 'done' ? (
+            <CheckCircle2 className="w-4 h-4 text-green-400" />
+          ) : (
+            <Circle className="w-4 h-4 text-gray-500 hover:text-cyan-400 transition" />
+          )}
+        </button>
+
+        {/* Title - clickable to open detail */}
+        <span
+          onClick={onClick}
+          className={`flex-1 text-sm text-white truncate ${task.status === 'done' ? 'line-through' : ''}`}
+        >
+          {task.title}
+        </span>
+
+        {/* Priority indicator */}
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+          task.priority === 'urgent' ? 'bg-red-500' :
+          task.priority === 'high' ? 'bg-orange-500' :
+          task.priority === 'medium' ? 'bg-blue-500' : 'bg-gray-500'
+        }`} />
+
+        {/* Due date indicator if overdue */}
+        {isOverdue && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />}
+
+        {/* Expand button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsCollapsed(false);
+          }}
+          className="flex-shrink-0 p-1 text-gray-500 hover:text-white hover:bg-white/10 rounded transition"
+        >
+          <ChevronDown className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  // Expanded view - full card
   return (
     <div
-      onClick={onClick}
       className={`p-3 rounded-lg bg-[#1a1d24] border border-white/10 hover:border-white/20 cursor-pointer transition group ${
         task.status === 'done' ? 'opacity-60' : ''
       }`}
     >
+      {/* Header with collapse button */}
       <div className="flex items-start gap-2">
         {/* Complete button */}
         <button
@@ -726,7 +784,7 @@ function TaskCard({
           )}
         </button>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0" onClick={onClick}>
           <h4 className={`text-sm font-medium text-white truncate ${task.status === 'done' ? 'line-through' : ''}`}>
             {task.title}
           </h4>
@@ -778,6 +836,17 @@ function TaskCard({
             </div>
           )}
         </div>
+
+        {/* Collapse button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsCollapsed(true);
+          }}
+          className="flex-shrink-0 p-1 text-gray-500 hover:text-white hover:bg-white/10 rounded transition opacity-0 group-hover:opacity-100"
+        >
+          <ChevronUp className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
@@ -1281,12 +1350,12 @@ function CalendarView({
     .filter(task => !filterAssignee || task.assigned_to_id === filterAssignee)
     .filter(task => !filterPriority || task.priority === filterPriority);
 
-  // Get backlog tasks (no due date or in backlog column)
+  // Get backlog tasks (only tasks in backlog column)
   const backlogTasks = filteredTasks.filter(
-    task => task.column_id === backlogColumn?.id || !task.due_date
+    task => task.column_id === backlogColumn?.id
   );
 
-  // Get tasks with due dates for calendar
+  // Get tasks with due dates for calendar (exclude backlog)
   const calendarTasks = filteredTasks.filter(task => task.due_date && task.column_id !== backlogColumn?.id);
 
   // Get tasks for a specific day

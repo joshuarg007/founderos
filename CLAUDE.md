@@ -23,6 +23,11 @@
 
 ---
 
+## Git Rules
+**NEVER run `git add`, `git commit`, or `git push` without explicit user permission.** Always provide the commands for the user to run themselves.
+
+---
+
 ## Project Overview
 A comprehensive startup management platform with React frontend and FastAPI backend. Designed to help founders track everything needed to run their business.
 
