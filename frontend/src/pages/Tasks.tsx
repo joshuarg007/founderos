@@ -5,7 +5,7 @@ import {
   Plus, Search, LayoutGrid, Clock, MessageSquare,
   CheckCircle2, Circle, AlertCircle, Calendar, User, X,
   Trash2, Edit3, Play, Square,
-  Send, Timer, History, Flag
+  Send, Timer, History, Flag, CalendarDays, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -15,7 +15,7 @@ import {
   getRunningTimer, getTaskActivity,
 } from '../lib/api';
 import type { TaskBoard, TaskColumn, Task, UserBrief, TaskComment, TimeEntry, TaskActivity } from '../lib/api';
-import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
+import { format, formatDistanceToNow, isPast, isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: 'bg-gray-500/20 text-gray-300 border-gray-500/30',
@@ -44,7 +44,8 @@ export default function Tasks() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAssignee, setFilterAssignee] = useState<number | null>(null);
   const [filterPriority, setFilterPriority] = useState<string | null>(null);
-  const [showCompleted, setShowCompleted] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(true);
+  const [viewMode, setViewMode] = useState<'kanban' | 'calendar'>('kanban');
 
   // Modal states
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -166,7 +167,7 @@ export default function Tasks() {
         title: taskForm.title,
         description: taskForm.description || undefined,
         priority: taskForm.priority,
-        due_date: taskForm.due_date || undefined,
+        due_date: taskForm.due_date ? new Date(taskForm.due_date).toISOString() : undefined,
         assigned_to_id: taskForm.assigned_to_id || undefined,
         column_id: taskForm.column_id || currentBoard.columns[1]?.id, // Default to "To Do"
         status: 'todo',
@@ -188,7 +189,7 @@ export default function Tasks() {
         title: taskForm.title,
         description: taskForm.description || null,
         priority: taskForm.priority,
-        due_date: taskForm.due_date || null,
+        due_date: taskForm.due_date ? new Date(taskForm.due_date).toISOString() : null,
       });
       setShowTaskModal(false);
       setEditingTask(null);
@@ -333,19 +334,47 @@ export default function Tasks() {
               Kanban board for managing tasks across your team
             </p>
           </div>
-          {canEdit && (
-            <button
-              onClick={() => {
-                resetTaskForm();
-                setEditingTask(null);
-                setShowTaskModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
-            >
-              <Plus className="w-5 h-5" />
-              Add Task
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {/* View toggle */}
+            <div className="flex items-center bg-white/5 border border-white/10 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                  viewMode === 'kanban'
+                    ? 'bg-cyan-500/20 text-cyan-300'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                Board
+              </button>
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                  viewMode === 'calendar'
+                    ? 'bg-cyan-500/20 text-cyan-300'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                Calendar
+              </button>
+            </div>
+
+            {canEdit && (
+              <button
+                onClick={() => {
+                  resetTaskForm();
+                  setEditingTask(null);
+                  setShowTaskModal(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-medium hover:opacity-90 transition"
+              >
+                <Plus className="w-5 h-5" />
+                Add Task
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
@@ -417,24 +446,40 @@ export default function Tasks() {
       </div>
 
       {/* Kanban Board */}
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex-1 overflow-x-auto p-6">
-          <div className="flex gap-4 h-full min-w-max">
-            {currentBoard?.columns
-              .sort((a, b) => a.position - b.position)
-              .map(column => (
-                <KanbanColumn
-                  key={column.id}
-                  column={column}
-                  tasks={getFilteredTasks(column.id)}
-                  onTaskClick={setSelectedTask}
-                  onCompleteTask={handleCompleteTask}
-                  canEdit={canEdit}
-                />
-              ))}
+      {viewMode === 'kanban' && (
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="flex-1 overflow-x-auto p-6">
+            <div className="flex gap-4 h-full min-w-max">
+              {currentBoard?.columns
+                .sort((a, b) => a.position - b.position)
+                .map(column => (
+                  <KanbanColumn
+                    key={column.id}
+                    column={column}
+                    tasks={getFilteredTasks(column.id)}
+                    onTaskClick={setSelectedTask}
+                    onCompleteTask={handleCompleteTask}
+                    canEdit={canEdit}
+                  />
+                ))}
+            </div>
           </div>
-        </div>
-      </DragDropContext>
+        </DragDropContext>
+      )}
+
+      {/* Calendar View */}
+      {viewMode === 'calendar' && currentBoard && (
+        <CalendarView
+          tasks={tasks}
+          backlogColumn={currentBoard.columns.find(c => c.status === 'backlog')}
+          onTaskClick={setSelectedTask}
+          onCompleteTask={handleCompleteTask}
+          searchQuery={searchQuery}
+          filterAssignee={filterAssignee}
+          filterPriority={filterPriority}
+          canEdit={canEdit}
+        />
+      )}
 
       {/* Task Detail Modal */}
       {selectedTask && (
@@ -1205,6 +1250,224 @@ function TaskDetailPanel({
               </button>
             ) : null}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Calendar View Component
+function CalendarView({
+  tasks,
+  backlogColumn,
+  onTaskClick,
+  onCompleteTask,
+  searchQuery,
+  filterAssignee,
+  filterPriority,
+  canEdit,
+}: {
+  tasks: Task[];
+  backlogColumn?: TaskColumn;
+  onTaskClick: (task: Task) => void;
+  onCompleteTask: (taskId: number) => void;
+  searchQuery: string;
+  filterAssignee: number | null;
+  filterPriority: string | null;
+  canEdit: boolean;
+}) {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  // Filter tasks
+  const filteredTasks = tasks
+    .filter(task => !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter(task => !filterAssignee || task.assigned_to_id === filterAssignee)
+    .filter(task => !filterPriority || task.priority === filterPriority);
+
+  // Get backlog tasks (no due date or in backlog column)
+  const backlogTasks = filteredTasks.filter(
+    task => task.column_id === backlogColumn?.id || !task.due_date
+  );
+
+  // Get tasks with due dates for calendar
+  const calendarTasks = filteredTasks.filter(task => task.due_date && task.column_id !== backlogColumn?.id);
+
+  // Get tasks for a specific day
+  const getTasksForDay = (day: Date) => {
+    return calendarTasks.filter(task =>
+      task.due_date && isSameDay(new Date(task.due_date), day)
+    );
+  };
+
+  // Calendar navigation
+  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+  const goToToday = () => setCurrentMonth(new Date());
+
+  // Generate calendar days
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const calendarStart = startOfWeek(monthStart);
+  const calendarEnd = endOfWeek(monthEnd);
+  const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+
+  return (
+    <div className="flex-1 flex overflow-hidden">
+      {/* Backlog Sidebar */}
+      <div className="w-72 flex-shrink-0 border-r border-white/10 flex flex-col bg-white/5">
+        <div className="p-3 border-b border-white/10">
+          <div className="flex items-center justify-between">
+            <h3 className="font-medium text-white flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-gray-500" />
+              Backlog
+            </h3>
+            <span className="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-400">
+              {backlogTasks.length}
+            </span>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+          {backlogTasks.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-4">No backlog tasks</p>
+          ) : (
+            backlogTasks.map(task => (
+              <div
+                key={task.id}
+                onClick={() => onTaskClick(task)}
+                className={`p-2.5 rounded-lg bg-[#1a1d24] border border-white/10 hover:border-white/20 cursor-pointer transition ${
+                  task.status === 'done' ? 'opacity-60' : ''
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCompleteTask(task.id);
+                    }}
+                    className="mt-0.5 flex-shrink-0"
+                  >
+                    {task.status === 'done' ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-400" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-gray-500 hover:text-cyan-400 transition" />
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`text-sm text-white truncate ${task.status === 'done' ? 'line-through' : ''}`}>
+                      {task.title}
+                    </h4>
+                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded border mt-1 ${PRIORITY_COLORS[task.priority]}`}>
+                      {task.priority}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Calendar */}
+      <div className="flex-1 flex flex-col p-4 overflow-hidden">
+        {/* Calendar Header */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-white">
+            {format(currentMonth, 'MMMM yyyy')}
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={goToToday}
+              className="px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
+            >
+              Today
+            </button>
+            <button
+              onClick={prevMonth}
+              className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              onClick={nextMonth}
+              className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Day headers */}
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div className="flex-1 grid grid-cols-7 gap-1 auto-rows-fr overflow-hidden">
+          {calendarDays.map(day => {
+            const dayTasks = getTasksForDay(day);
+            const isCurrentMonth = isSameMonth(day, currentMonth);
+            const isCurrentDay = isSameDay(day, new Date());
+            const hasOverdue = dayTasks.some(t => isPast(new Date(t.due_date!)) && t.status !== 'done');
+
+            return (
+              <div
+                key={day.toISOString()}
+                className={`rounded-lg border overflow-hidden flex flex-col ${
+                  isCurrentMonth
+                    ? 'bg-white/5 border-white/10'
+                    : 'bg-white/[0.02] border-white/5'
+                } ${isCurrentDay ? 'ring-2 ring-cyan-500/50' : ''}`}
+              >
+                {/* Day number */}
+                <div className={`px-2 py-1 text-right ${
+                  isCurrentDay
+                    ? 'bg-cyan-500/20'
+                    : hasOverdue
+                    ? 'bg-red-500/10'
+                    : ''
+                }`}>
+                  <span className={`text-xs font-medium ${
+                    isCurrentMonth
+                      ? isCurrentDay
+                        ? 'text-cyan-300'
+                        : 'text-gray-300'
+                      : 'text-gray-600'
+                  }`}>
+                    {format(day, 'd')}
+                  </span>
+                </div>
+
+                {/* Tasks */}
+                <div className="flex-1 p-1 overflow-y-auto space-y-1">
+                  {dayTasks.slice(0, 3).map(task => (
+                    <div
+                      key={task.id}
+                      onClick={() => onTaskClick(task)}
+                      className={`px-1.5 py-1 rounded text-xs cursor-pointer truncate transition ${
+                        task.status === 'done'
+                          ? 'bg-green-500/20 text-green-300 line-through'
+                          : isPast(new Date(task.due_date!))
+                          ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+                          : 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30'
+                      }`}
+                      title={task.title}
+                    >
+                      {task.title}
+                    </div>
+                  ))}
+                  {dayTasks.length > 3 && (
+                    <div className="text-xs text-gray-500 text-center">
+                      +{dayTasks.length - 3} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
