@@ -779,6 +779,50 @@ export default function Website() {
           </button>
         </div>
 
+        {/* Additional Listings - shown first so new listings are visible */}
+        {formData.additional_listings && formData.additional_listings.length > 0 && (
+          <div className="space-y-3 mb-6 pb-4 border-b border-white/10">
+            <div className="text-sm text-gray-400">Your Custom Listings</div>
+            {formData.additional_listings.map((listing, index) => (
+              <div key={index} className="grid md:grid-cols-4 gap-3 p-3 rounded-lg bg-white/5">
+                <select
+                  value={listing.platform}
+                  onChange={(e) => updateListing(index, 'platform', e.target.value)}
+                  className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-cyan-500/50"
+                >
+                  {listingPlatforms.map(p => (
+                    <option key={p.value} value={p.value} className="bg-[#1a1d24] text-white">{p.label}</option>
+                  ))}
+                </select>
+                <input
+                  type="url"
+                  value={listing.url || ''}
+                  onChange={(e) => updateListing(index, 'url', e.target.value)}
+                  placeholder="https://..."
+                  className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-cyan-500/50"
+                />
+                <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={listing.verified || false}
+                    onChange={(e) => updateListing(index, 'verified', e.target.checked)}
+                    className="rounded bg-white/5 border-white/10 text-cyan-500"
+                  />
+                  Verified/Claimed
+                </label>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => removeListing(index)}
+                    className="p-2 text-gray-500 hover:text-red-400 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Main Listings */}
         <div className="space-y-4">
           {/* Google Business */}
@@ -906,50 +950,6 @@ export default function Website() {
             </label>
           </div>
         </div>
-
-        {/* Additional Listings */}
-        {formData.additional_listings && formData.additional_listings.length > 0 && (
-          <div className="space-y-3 pt-4 mt-4 border-t border-white/10">
-            <div className="text-sm text-gray-400">Additional Listings</div>
-            {formData.additional_listings.map((listing, index) => (
-              <div key={index} className="grid md:grid-cols-4 gap-3 p-3 rounded-lg bg-white/5">
-                <select
-                  value={listing.platform}
-                  onChange={(e) => updateListing(index, 'platform', e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-cyan-500/50"
-                >
-                  {listingPlatforms.map(p => (
-                    <option key={p.value} value={p.value} className="bg-[#1a1d24] text-white">{p.label}</option>
-                  ))}
-                </select>
-                <input
-                  type="url"
-                  value={listing.url || ''}
-                  onChange={(e) => updateListing(index, 'url', e.target.value)}
-                  placeholder="https://..."
-                  className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-cyan-500/50"
-                />
-                <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={listing.verified || false}
-                    onChange={(e) => updateListing(index, 'verified', e.target.checked)}
-                    className="rounded bg-white/5 border-white/10 text-cyan-500"
-                  />
-                  Verified/Claimed
-                </label>
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => removeListing(index)}
-                    className="p-2 text-gray-500 hover:text-red-400 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Notes Section */}

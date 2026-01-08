@@ -1,8 +1,17 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
-from icalendar import Calendar as ICalendar, Event as ICalEvent
 from uuid import uuid4
+
+# Lazy import for icalendar (optional dependency)
+try:
+    from icalendar import Calendar as ICalendar, Event as ICalEvent, Alarm as ICalAlarm
+    ICALENDAR_AVAILABLE = True
+except ImportError:
+    ICALENDAR_AVAILABLE = False
+    ICalendar = None
+    ICalEvent = None
+    ICalAlarm = None
 import re
 import secrets
 import mimetypes
@@ -2816,6 +2825,9 @@ def get_calendar_feed(
     Get iCal feed for tasks and deadlines.
     This endpoint uses a token for authentication so it can be used by calendar apps.
     """
+    if not ICALENDAR_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Calendar sync not available - icalendar package not installed")
+
     # Find user by calendar token
     user = db.query(User).filter(User.calendar_token == token).first()
     if not user:
@@ -2841,9 +2853,8 @@ def get_calendar_feed(
         event.add('dtend', deadline.due_date.date())
 
         # Add reminder/alarm
-        if deadline.reminder_days:
-            from icalendar import Alarm
-            alarm = Alarm()
+        if deadline.reminder_days and ICalAlarm:
+            alarm = ICalAlarm()
             alarm.add('action', 'DISPLAY')
             alarm.add('description', f'Reminder: {deadline.title}')
             alarm.add('trigger', timedelta(days=-deadline.reminder_days))

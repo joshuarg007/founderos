@@ -1457,6 +1457,25 @@ export default function GettingStarted() {
             </div>
           );
         })}
+
+        {/* No results message */}
+        {(searchQuery || filterPriority || showOnlyIncomplete) &&
+          categories.every(cat => getCategoryItems(cat.name).length === 0) && (
+          <div className="text-center py-12 text-gray-500">
+            <Filter className="w-8 h-8 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No items match your filters</p>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setFilterPriority(null);
+                setShowOnlyIncomplete(false);
+              }}
+              className="mt-3 text-cyan-400 text-sm hover:underline"
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Quick Resources */}
