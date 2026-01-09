@@ -13,7 +13,6 @@ import {
   Mail,
   Link2,
   Puzzle,
-  Calendar,
   CheckCircle,
   Clock,
   XCircle,
@@ -22,7 +21,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { getProductsUsed, createProductUsed, updateProductUsed, deleteProductUsed, type ProductUsed } from '../lib/api';
-import { serviceTemplates, searchTemplates, type ServiceTemplate } from '../data/serviceTemplates';
+import { serviceTemplates, searchTemplates, type ServiceTemplate } from '../lib/serviceTemplates';
 
 const categories = [
   { value: 'all', label: 'All', icon: '🔧' },
