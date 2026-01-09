@@ -136,7 +136,11 @@ app.add_middleware(
 )
 
 # Create uploads directory with restricted permissions
-UPLOAD_DIR = "uploads"
+# Use absolute path in Docker, relative path for local development
+if os.path.exists("/app"):
+    UPLOAD_DIR = "/app/uploads"
+else:
+    UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 # NOTE: Static file mount removed for security - use /api/documents/{id}/download instead
 

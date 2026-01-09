@@ -14,8 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create data directory for SQLite
-RUN mkdir -p /app/data
+# Create data and uploads directories
+RUN mkdir -p /app/data /app/uploads
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1
