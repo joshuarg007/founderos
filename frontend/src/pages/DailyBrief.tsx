@@ -8,31 +8,56 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronRight,
+  ClipboardList,
   Mail,
   Phone,
   FileText,
   RefreshCw,
   Sparkles,
   User,
+  ArrowRight,
 } from 'lucide-react';
 import {
   getDailyBrief,
   completeDeadlineAction,
   completeTaskFromBrief,
   recordContactTouch,
+  getChecklistBulk,
 } from '../lib/api';
-import type { DailyBrief as DailyBriefType, DailyBriefItem } from '../lib/api';
+import type { DailyBrief as DailyBriefType, DailyBriefItem, ChecklistProgress } from '../lib/api';
+
+// Key required checklist items to show when daily brief is empty
+const KEY_REQUIRED_ITEMS = [
+  { id: 'choose-structure', title: 'Choose Business Structure' },
+  { id: 'articles-incorporation', title: 'File Articles of Incorporation' },
+  { id: 'registered-agent', title: 'Appoint Registered Agent' },
+  { id: 'ein', title: 'Get EIN' },
+  { id: 'boi-report', title: 'File BOI Report (FinCEN)' },
+  { id: 'nm-crs', title: 'NM CRS Registration' },
+  { id: 'bylaws', title: 'Bylaws / Operating Agreement' },
+  { id: 'business-bank', title: 'Open Business Bank Account' },
+  { id: 'accounting-system', title: 'Set Up Accounting' },
+  { id: 'domain-name', title: 'Register Domain' },
+  { id: 'business-email', title: 'Set Up Professional Email' },
+  { id: 'website', title: 'Build Company Website' },
+  { id: 'mfa-enforcement', title: 'Enforce MFA on All Accounts' },
+];
 
 export default function DailyBrief() {
   const [brief, setBrief] = useState<DailyBriefType | null>(null);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<number | null>(null);
+  const [checklistProgress, setChecklistProgress] = useState<Record<string, ChecklistProgress>>({});
 
   const loadBrief = async () => {
     setLoading(true);
     try {
-      const data = await getDailyBrief();
-      setBrief(data);
+      const [briefData, checklistData] = await Promise.all([
+        getDailyBrief(),
+        getChecklistBulk()
+      ]);
+      setBrief(briefData);
+      setChecklistProgress(checklistData.items || {});
     } catch (err) {
       console.error('Failed to load daily brief:', err);
     } finally {
@@ -278,6 +303,12 @@ export default function DailyBrief() {
   const hasContacts = brief.contacts_attention.length > 0;
   const hasNothing = !hasOverdue && !hasToday && !hasThisWeek && !hasHeadsUp && !hasContacts;
 
+  // Get incomplete required checklist items
+  const incompleteChecklist = KEY_REQUIRED_ITEMS.filter(
+    item => !checklistProgress[item.id]?.is_completed
+  );
+  const hasIncompleteChecklist = incompleteChecklist.length > 0;
+
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
       {/* Header */}
@@ -298,13 +329,45 @@ export default function DailyBrief() {
         </button>
       </div>
 
-      {/* All Clear State */}
+      {/* All Clear State - Show incomplete checklist items or truly all caught up */}
       {hasNothing && (
-        <div className="text-center py-16 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20">
-          <Sparkles className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">You're all caught up!</h2>
-          <p className="text-gray-400">No urgent items. Focus on building.</p>
-        </div>
+        hasIncompleteChecklist ? (
+          <div className="rounded-2xl bg-gradient-to-br from-violet-500/10 to-cyan-500/10 border border-violet-500/20 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <ClipboardList className="w-6 h-6 text-violet-400" />
+              <div>
+                <h2 className="text-xl font-bold text-white">No urgent deadlines</h2>
+                <p className="text-gray-400 text-sm">But there's still work to do on your business setup</p>
+              </div>
+            </div>
+            <div className="space-y-2 mb-4">
+              {incompleteChecklist.slice(0, 5).map(item => (
+                <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                  <div className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
+                  <span className="text-white text-sm">{item.title}</span>
+                </div>
+              ))}
+              {incompleteChecklist.length > 5 && (
+                <p className="text-sm text-gray-500 pl-5">
+                  +{incompleteChecklist.length - 5} more items
+                </p>
+              )}
+            </div>
+            <Link
+              to="/getting-started"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-500/20 text-violet-300 hover:bg-violet-500/30 transition text-sm font-medium"
+            >
+              Continue Setup
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        ) : (
+          <div className="text-center py-16 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20">
+            <Sparkles className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-white mb-2">You're all caught up!</h2>
+            <p className="text-gray-400">No urgent items. Focus on building.</p>
+          </div>
+        )
       )}
 
       {/* OVERDUE - Red alert */}

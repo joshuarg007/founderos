@@ -262,6 +262,17 @@ export interface DailyBrief {
 
 export const getDailyBrief = () => fetchApi<DailyBrief>('/daily-brief');
 
+// Checklist
+export interface ChecklistProgress {
+  item_id: string;
+  is_completed: boolean;
+  notes: string | null;
+  data: string | null;
+  completed_at: string | null;
+}
+
+export const getChecklistBulk = () => fetchApi<{ items: Record<string, ChecklistProgress> }>('/checklist/bulk');
+
 export const completeDeadlineAction = (id: number) =>
   fetchApi<{ ok: boolean }>(`/deadlines/${id}/complete`, { method: 'POST' });
 
