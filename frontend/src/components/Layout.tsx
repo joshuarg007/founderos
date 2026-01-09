@@ -49,7 +49,7 @@ export default function Layout() {
       <aside className="w-64 bg-[#1a1d24] border-r border-white/10 flex flex-col relative">
         {/* Logo */}
         <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center">
               <Rocket className="w-5 h-5 text-white" />
             </div>
@@ -57,7 +57,7 @@ export default function Layout() {
               <h1 className="text-lg font-bold text-white">FounderOS</h1>
               <p className="text-xs text-gray-500">Command Center</p>
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* Navigation - with bottom padding for fixed footer */}
