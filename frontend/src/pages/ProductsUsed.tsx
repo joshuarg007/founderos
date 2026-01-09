@@ -231,13 +231,17 @@ export default function ProductsUsed() {
           {filteredProducts.map((product) => (
             <div
               key={product.id}
-              className="p-4 rounded-xl bg-[#1a1d24] border border-white/10 hover:border-white/20 transition group"
+              className={`p-4 rounded-xl bg-[#1a1d24] border border-white/10 hover:border-white/20 transition group ${product.url ? 'cursor-pointer' : ''}`}
+              onClick={() => product.url && window.open(product.url, '_blank', 'noopener,noreferrer')}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{product.icon || '🔧'}</span>
                   <div>
-                    <h3 className="font-semibold text-white">{product.name}</h3>
+                    <h3 className="font-semibold text-white flex items-center gap-2">
+                      {product.name}
+                      {product.url && <ExternalLink className="w-3 h-3 text-gray-500 group-hover:text-cyan-400 transition" />}
+                    </h3>
                     {product.vendor && (
                       <span className="text-xs text-gray-500">by {product.vendor}</span>
                     )}
@@ -276,28 +280,22 @@ export default function ProductsUsed() {
               <div className="flex items-center justify-between pt-3 border-t border-white/10">
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleEdit(product)}
+                    onClick={(e) => { e.stopPropagation(); handleEdit(product); }}
                     className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition"
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handleDelete(product.id)}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(product.id); }}
                     className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/10 transition"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
                 {product.url && (
-                  <a
-                    href={product.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 text-white text-sm hover:bg-white/20 transition"
-                  >
-                    Open
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                  <span className="text-xs text-gray-500 group-hover:text-cyan-400 transition">
+                    Click to open
+                  </span>
                 )}
               </div>
             </div>
